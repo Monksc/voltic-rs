@@ -206,6 +206,3 @@ Current test suite: `simple_matrix_multiply`, `simple_mse`, `mse_backward`, `sin
 
 ---
 
-## License
-
-MIT
