@@ -1,0 +1,10 @@
+[package]
+name = "voltic"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bytemuck = "1.25.0"
+pollster = "0.4.0"
+rand = { version= "0.10.0", features = ["std_rng"] }
+wgpu = "27.0.1"
