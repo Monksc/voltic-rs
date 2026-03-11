@@ -213,3 +213,12 @@ impl_activation!(
     "gelu_backward",
     input // gelu backward needs original input
 );
+
+impl_activation!(
+    ExpOp,
+    include_str!("shaders/exp.wgsl"),
+    include_str!("shaders/exp_backward.wgsl"),
+    "exp",
+    "exp_backward",
+    output // exp backward reuses output like tanh/sigmoid
+);

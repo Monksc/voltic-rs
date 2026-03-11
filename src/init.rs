@@ -39,3 +39,7 @@ pub fn he(fan_in: u32) -> impl FnOnce(u32) -> Vec<f32> {
 pub fn zeros() -> impl FnOnce(u32) -> Vec<f32> {
     |n| vec![0.0; n as usize]
 }
+
+pub fn ones() -> impl FnOnce(u32) -> Vec<f32> {
+    |n| vec![1.0; n as usize]
+}

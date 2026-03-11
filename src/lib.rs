@@ -28,13 +28,16 @@ pub mod buffer_kind {
     pub const GRAD: &str = "grad";
     pub const MOMENTUM: &str = "momentum";
     pub const VARIANCE: &str = "variance";
+    pub const PARTIAL: &str = "partial";
+    pub const PARTIAL_SUM: &str = "partial_sum";
+    pub const X_NORM: &str = "x_norm";
 }
 
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
 
-    use crate::{Context, Linear, Sgd, Var};
+    use crate::{Adam, Context, Linear, Sgd, Var};
 
     static TEST_LOCK: Mutex<()> = Mutex::new(());
 
@@ -169,7 +172,7 @@ mod tests {
     }
 
     #[test]
-    fn xor() {
+    fn xor_sgd() {
         let _lock = TEST_LOCK.lock().unwrap();
 
         Context::init_gpu().unwrap();
@@ -220,5 +223,151 @@ mod tests {
         assert!((preds[1] - 1.0).abs() < 0.2, "1 XOR 0 failed: {}", preds[1]);
         assert!((preds[2] - 1.0).abs() < 0.2, "0 XOR 1 failed: {}", preds[2]);
         assert!((preds[3] - 0.0).abs() < 0.2, "1 XOR 1 failed: {}", preds[3]);
+    }
+
+    #[test]
+    fn xor_adam_tanh() {
+        let _lock = TEST_LOCK.lock().unwrap();
+
+        Context::init_gpu().unwrap();
+
+        let x = Var::with_shape(vec![4, 2]);
+        let y_true = Var::with_shape(vec![4, 1]);
+
+        let h1 = Linear::new(8).forward(&x).unwrap().tanh().unwrap();
+        let y_pred = Linear::new(1).forward(&h1).unwrap();
+        let loss = y_pred.mse(y_true).unwrap();
+
+        Context::allocate_buffers().unwrap();
+
+        x.load(vec![
+            vec![0.0, 0.0],
+            vec![1.0, 0.0],
+            vec![0.0, 1.0],
+            vec![1.0, 1.0],
+        ])
+        .unwrap();
+        y_true
+            .load(vec![vec![0.0], vec![1.0], vec![1.0], vec![0.0]])
+            .unwrap();
+
+        Context::prepare().unwrap();
+        let mut adam = Adam::new(0.1);
+        adam.init().unwrap();
+
+        for epoch in 0..126 {
+            Context::run().unwrap();
+            Context::backward().unwrap();
+            adam.step().unwrap();
+
+            if epoch % 25 == 0 {
+                let errors = loss.to_cpu().unwrap();
+                let mse = errors.iter().sum::<f32>() / errors.len() as f32;
+                println!("epoch {epoch:5} — loss: {mse:.6}");
+            }
+        }
+
+        let preds = y_pred.to_cpu().unwrap();
+        println!("\nXOR predictions:");
+        println!("  0 XOR 0 = {:.4}  (expected 0.0)", preds[0]);
+        println!("  1 XOR 0 = {:.4}  (expected 1.0)", preds[1]);
+        println!("  0 XOR 1 = {:.4}  (expected 1.0)", preds[2]);
+        println!("  1 XOR 1 = {:.4}  (expected 0.0)", preds[3]);
+
+        assert!((preds[0] - 0.0).abs() < 0.2, "0 XOR 0 failed: {}", preds[0]);
+        assert!((preds[1] - 1.0).abs() < 0.2, "1 XOR 0 failed: {}", preds[1]);
+        assert!((preds[2] - 1.0).abs() < 0.2, "0 XOR 1 failed: {}", preds[2]);
+        assert!((preds[3] - 0.0).abs() < 0.2, "1 XOR 1 failed: {}", preds[3]);
+    }
+
+    #[test]
+    fn xor_adam_softmax() {
+        let _lock = TEST_LOCK.lock().unwrap();
+
+        Context::init_gpu().unwrap();
+
+        let x = Var::with_shape(vec![4, 2]);
+        let y_true = Var::with_shape(vec![4, 2]);
+
+        let h1 = Linear::new(8).forward(&x).unwrap().tanh().unwrap();
+        let y_pred = Linear::new(2).forward(&h1).unwrap().softmax(1).unwrap();
+        let loss = y_pred.mse(y_true).unwrap();
+
+        Context::allocate_buffers().unwrap();
+
+        x.load(vec![
+            vec![0.0, 0.0],
+            vec![1.0, 0.0],
+            vec![0.0, 1.0],
+            vec![1.0, 1.0],
+        ])
+        .unwrap();
+        y_true
+            .load(vec![
+                vec![0.0, 1.0],
+                vec![1.0, 0.0],
+                vec![1.0, 0.0],
+                vec![0.0, 1.0],
+            ])
+            .unwrap();
+
+        Context::prepare().unwrap();
+        let mut adam = Adam::new(0.1);
+        adam.init().unwrap();
+
+        for epoch in 0..51 {
+            Context::run().unwrap();
+            Context::backward().unwrap();
+            adam.step().unwrap();
+
+            if epoch % 25 == 0 {
+                let errors = loss.to_cpu().unwrap();
+                let mse = errors.iter().sum::<f32>() / errors.len() as f32;
+                println!("epoch {epoch:5} — loss: {mse:.6}");
+            }
+        }
+
+        let preds = y_pred.to_cpu().unwrap();
+        println!("\nXOR predictions: {:?}", preds);
+        println!("  0 XOR 0 = {:.4}  (expected 0.0)", preds[0]);
+        println!("  1 XOR 0 = {:.4}  (expected 1.0)", preds[2]);
+        println!("  0 XOR 1 = {:.4}  (expected 1.0)", preds[4]);
+        println!("  1 XOR 1 = {:.4}  (expected 0.0)", preds[6]);
+
+        assert!(preds[0] + 0.1 < preds[1]);
+        assert!(preds[2] > preds[3] + 0.1);
+        assert!(preds[4] > preds[5] + 0.1);
+        assert!(preds[6] + 0.1 < preds[7]);
+    }
+
+    #[test]
+    fn softmax_simple_test() {
+        let _lock = TEST_LOCK.lock().unwrap();
+
+        Context::init_gpu().unwrap();
+
+        let x = Var::with_shape(vec![2, 4]);
+        let y = x.softmax(1).unwrap();
+
+        Context::allocate_buffers().unwrap();
+
+        x.load(vec![vec![0.0, 0.0, 1.0, 0.0], vec![1.0, 1.0, 1.0, 1.0]])
+            .unwrap();
+
+        Context::prepare().unwrap();
+        Context::run().unwrap();
+
+        let y = y.to_cpu().unwrap();
+
+        assert_eq!(y.len(), 8);
+
+        assert!((y[0] + y[1] + y[2] + y[3] - 1.0).abs() < 0.0001);
+        assert_eq!(y[0], y[1]);
+        assert_eq!(y[1], y[3]);
+
+        assert_eq!(y[4], 0.25);
+        assert_eq!(y[5], 0.25);
+        assert_eq!(y[6], 0.25);
+        assert_eq!(y[7], 0.25);
     }
 }

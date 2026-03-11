@@ -15,3 +15,21 @@ pub use activation::*;
 
 pub mod bias;
 pub use bias::*;
+
+pub mod reduce;
+pub use reduce::*;
+
+pub mod broadcast;
+pub use broadcast::*;
+
+pub mod softmax;
+pub use softmax::*;
+
+pub mod embedding;
+pub use embedding::*;
+
+pub mod layer_norm;
+pub use layer_norm::*;
+
+pub mod permute;
+pub use permute::*;

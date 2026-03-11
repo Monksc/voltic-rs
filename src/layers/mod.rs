@@ -1,2 +1,8 @@
 pub mod linear;
 pub use linear::*;
+
+pub mod embedding;
+pub use embedding::*;
+
+pub mod layer_norm;
+pub use layer_norm::*;

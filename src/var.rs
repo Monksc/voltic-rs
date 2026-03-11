@@ -4,9 +4,10 @@ use std::{
 };
 
 use crate::{
-    BiasAddOp, BiasDivOp, BiasMulOp, BiasSubOp, Context, GeluOp, MatMulOp, MseOp, Op, ReLUOp,
-    ScalarAddOp, ScalarDivOp, ScalarMulOp, ScalarSubOp, SigmoidOp, TanhOp, VolticError,
-    buffer_kind, errors::Result,
+    BiasAddOp, BiasDivOp, BiasMulOp, BiasSubOp, BroadcastAddOp, BroadcastDivOp, BroadcastMulOp,
+    BroadcastSubOp, Context, ExpOp, GeluOp, MatMulOp, MseOp, Op, PermuteOp, ReLUOp, ReduceMaxOp,
+    ReduceMeanOp, ReduceSumOp, ScalarAddOp, ScalarDivOp, ScalarMulOp, ScalarSubOp, SigmoidOp,
+    SoftmaxOp, TanhOp, VolticError, buffer_kind, errors::Result,
 };
 
 #[derive(Copy, Debug, Clone, PartialEq, Hash, Eq)]
@@ -140,41 +141,87 @@ impl Var {
     pub fn gelu(&self) -> Result<Var> {
         self.apply_activation(|i, o, n| Box::new(GeluOp::new(i, o, n)))
     }
-}
 
-macro_rules! impl_bias_op {
-    ($method:ident, $safe_method:ident, $Op:ty) => {
-        impl Var {
-            pub fn $safe_method(&self, bias: Var) -> Result<Self> {
-                let shape = Context::shape(self.0).ok_or(VolticError::EmptyShape)?;
-                let bias_shape = Context::shape(bias.0).ok_or(VolticError::EmptyShape)?;
+    pub fn exp(&self) -> Result<Var> {
+        self.apply_activation(|i, o, n| Box::new(ExpOp::new(i, o, n)))
+    }
 
-                // bias must match cols
-                if bias_shape != vec![shape[1]] {
-                    return Err(VolticError::IncompatibleShapes {
-                        lhs: shape.clone(),
-                        rhs: bias_shape,
-                        op: stringify!($method),
-                    });
-                }
-
-                let rows = shape[0];
-                let cols = shape[1];
-                let output = Self::new();
-                Context::insert_shape(output.0, shape);
-                Context::push_operation(Box::new(<$Op>::new(self.0, bias.0, output.0, rows, cols)));
-                Ok(output)
-            }
-
-            pub fn $method(&self, bias: Var) -> Self {
-                Self::$safe_method(self, bias).expect(concat!(
-                    "Var::",
-                    stringify!($method),
-                    ": shape error"
-                ))
-            }
+    pub fn softmax(&self, axis: usize) -> Result<Var> {
+        let shape = Context::shape(self.0).ok_or(VolticError::EmptyShape)?;
+        if axis >= shape.len() {
+            return Err(VolticError::InvalidDimension {
+                dim: axis,
+                ndim: shape.len(),
+            });
         }
-    };
+        let outer: u32 = shape[..axis].iter().product();
+        let reduce: u32 = shape[axis];
+        let inner: u32 = shape[axis + 1..].iter().product();
+        let output = Var::new();
+        Context::insert_shape(output.0, shape);
+        Context::push_operation(Box::new(SoftmaxOp::new(
+            self.0, output.0, outer, reduce, inner,
+        )));
+        Ok(output)
+    }
+
+    pub fn prev(&self) -> Self {
+        Self(ID(self.0.0 - 1))
+    }
+    pub fn next(&self) -> Self {
+        Self(ID(self.0.0 + 1))
+    }
+
+    pub fn permute(&self, perm: &[usize]) -> Result<Self> {
+        let shape = Context::shape(self.0).ok_or(VolticError::EmptyShape)?;
+
+        if perm.len() != shape.len() {
+            return Err(VolticError::InvalidDimension {
+                dim: perm.len(),
+                ndim: shape.len(),
+            });
+        }
+
+        // Validate permutation — must be a valid permutation of 0..rank
+        let mut seen = vec![false; perm.len()];
+        for &p in perm {
+            if p >= perm.len() || seen[p] {
+                return Err(VolticError::InvalidDimension {
+                    dim: p,
+                    ndim: perm.len(),
+                });
+            }
+            seen[p] = true;
+        }
+
+        let out_shape: Vec<u32> = perm.iter().map(|&p| shape[p]).collect();
+        let output = Self::new();
+        Context::insert_shape(output.0, out_shape);
+        Context::push_operation(Box::new(PermuteOp::new(
+            self.0,
+            output.0,
+            shape,
+            perm.to_vec(),
+        )));
+        Ok(output)
+    }
+
+    /// Convenience wrapper — swap two axes
+    pub fn transpose(&self, axis_a: usize, axis_b: usize) -> Result<Self> {
+        let shape = Context::shape(self.0).ok_or(VolticError::EmptyShape)?;
+        let rank = shape.len();
+
+        if axis_a >= rank || axis_b >= rank {
+            return Err(VolticError::InvalidDimension {
+                dim: axis_a.max(axis_b),
+                ndim: rank,
+            });
+        }
+
+        let mut perm: Vec<usize> = (0..rank).collect();
+        perm.swap(axis_a, axis_b);
+        self.permute(&perm)
+    }
 }
 
 macro_rules! impl_scalar_op {
@@ -200,14 +247,132 @@ macro_rules! impl_scalar_op {
     };
 }
 
-// Bias ops
-impl_bias_op!(bias_add, bias_add_safe, BiasAddOp);
-impl_bias_op!(bias_sub, bias_sub_safe, BiasSubOp);
-impl_bias_op!(bias_mul, bias_mul_safe, BiasMulOp);
-impl_bias_op!(bias_div, bias_div_safe, BiasDivOp);
-
 // Scalar ops
 impl_scalar_op!(scalar_add, scalar_add_safe, ScalarAddOp);
 impl_scalar_op!(scalar_sub, scalar_sub_safe, ScalarSubOp);
 impl_scalar_op!(scalar_mul, scalar_mul_safe, ScalarMulOp);
 impl_scalar_op!(scalar_div, scalar_div_safe, ScalarDivOp);
+
+// Replace the impl_bias_op! macro and bias methods in var.rs with this.
+// Also update imports to use BroadcastAddOp, BroadcastSubOp, BroadcastMulOp, BroadcastDivOp
+// instead of BiasAddOp, BiasSubOp, BiasMulOp, BiasDivOp
+
+macro_rules! impl_broadcast_method {
+    ($method:ident, $safe_method:ident, $Op:ty) => {
+        impl Var {
+            pub fn $safe_method(&self, rhs: Var, axis: usize) -> Result<Self> {
+                let shape = Context::shape(self.0).ok_or(VolticError::EmptyShape)?;
+                let rhs_shape = Context::shape(rhs.0).ok_or(VolticError::EmptyShape)?;
+
+                if axis >= shape.len() {
+                    return Err(VolticError::InvalidDimension {
+                        dim: axis,
+                        ndim: shape.len(),
+                    });
+                }
+
+                // rhs must match shape with the broadcast axis removed
+                let expected_rhs: Vec<u32> = shape
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| *i != axis)
+                    .map(|(_, &d)| d)
+                    .collect();
+
+                if rhs_shape != expected_rhs {
+                    println!("Axis: {}", axis);
+                    return Err(VolticError::IncompatibleShapes {
+                        lhs: shape.clone(),
+                        rhs: rhs_shape,
+                        op: stringify!($method),
+                    });
+                }
+
+                let outer: u32 = shape[..axis].iter().product();
+                let reduce: u32 = shape[axis];
+                let inner: u32 = shape[axis + 1..].iter().product();
+
+                let output = Self::new();
+                Context::insert_shape(output.0, shape);
+                Context::push_operation(Box::new(<$Op>::new(
+                    self.0, rhs.0, output.0, outer, reduce, inner,
+                )));
+                Ok(output)
+            }
+
+            pub fn $method(&self, rhs: Var, axis: usize) -> Self {
+                Self::$safe_method(self, rhs, axis).expect(concat!(
+                    "Var::",
+                    stringify!($method),
+                    ": shape error"
+                ))
+            }
+        }
+    };
+}
+
+impl_broadcast_method!(broadcast_add, broadcast_add_safe, BroadcastAddOp);
+impl_broadcast_method!(broadcast_sub, broadcast_sub_safe, BroadcastSubOp);
+impl_broadcast_method!(broadcast_mul, broadcast_mul_safe, BroadcastMulOp);
+impl_broadcast_method!(broadcast_div, broadcast_div_safe, BroadcastDivOp);
+
+// Bias methods kept for backwards compatibility — wrap broadcast on last axis
+impl Var {
+    pub fn bias_add_safe(&self, bias: Var) -> Result<Self> {
+        let axis = Context::shape(self.0).ok_or(VolticError::EmptyShape)?.len() - 1;
+        self.broadcast_add_safe(bias, 0)
+    }
+    pub fn bias_sub_safe(&self, bias: Var) -> Result<Self> {
+        let axis = Context::shape(self.0).ok_or(VolticError::EmptyShape)?.len() - 1;
+        self.broadcast_sub_safe(bias, 0)
+    }
+    pub fn bias_mul_safe(&self, bias: Var) -> Result<Self> {
+        let axis = Context::shape(self.0).ok_or(VolticError::EmptyShape)?.len() - 1;
+        self.broadcast_mul_safe(bias, 0)
+    }
+    pub fn bias_div_safe(&self, bias: Var) -> Result<Self> {
+        let axis = Context::shape(self.0).ok_or(VolticError::EmptyShape)?.len() - 1;
+        self.broadcast_div_safe(bias, 0)
+    }
+    pub fn bias_add(&self, bias: Var) -> Self {
+        self.bias_add_safe(bias)
+            .expect("Var::bias_add: shape error")
+    }
+    pub fn bias_sub(&self, bias: Var) -> Self {
+        self.bias_sub_safe(bias)
+            .expect("Var::bias_sub: shape error")
+    }
+    pub fn bias_mul(&self, bias: Var) -> Self {
+        self.bias_mul_safe(bias)
+            .expect("Var::bias_mul: shape error")
+    }
+    pub fn bias_div(&self, bias: Var) -> Self {
+        self.bias_div_safe(bias)
+            .expect("Var::bias_div: shape error")
+    }
+}
+
+macro_rules! impl_reduce_method {
+    ($method:ident, $Op:ty) => {
+        pub fn $method(&self, axis: usize) -> Result<Self> {
+            let shape = Context::shape(self.0).ok_or(VolticError::EmptyShape)?;
+            if axis >= shape.len() {
+                return Err(VolticError::InvalidDimension {
+                    dim: axis,
+                    ndim: shape.len(),
+                });
+            }
+            let (outer, reduce, inner) = <$Op>::compute_dims(&shape, axis);
+            let output = Self::new();
+            Context::insert_shape(output.0, <$Op>::infer_output_shape(&shape, axis));
+            Context::push_operation(Box::new(<$Op>::new(self.0, output.0, outer, reduce, inner)));
+            Ok(output)
+        }
+    };
+}
+
+impl Var {
+    impl_reduce_method!(reduce_sum, ReduceSumOp);
+    impl_reduce_method!(reduce_max, ReduceMaxOp);
+    impl_reduce_method!(reduce_mean, ReduceMeanOp);
+}
