@@ -153,12 +153,12 @@ macro_rules! impl_bias_op {
                     .pipelines
                     .get($bwd_key)
                     .ok_or_else(|| VolticError::Internal(concat!($bwd_key, " not found").into()))?;
-                let in_buf = ctx.buffers.get(&self.inputs[0]).ok_or_else(|| {
-                    VolticError::Internal(format!("buffer not found: {:?}", self.inputs[0]))
-                })?;
-                let bias_buf = ctx.buffers.get(&self.inputs[1]).ok_or_else(|| {
-                    VolticError::Internal(format!("buffer not found: {:?}", self.inputs[1]))
-                })?;
+                // let in_buf = ctx.buffers.get(&self.inputs[0]).ok_or_else(|| {
+                //     VolticError::Internal(format!("buffer not found: {:?}", self.inputs[0]))
+                // })?;
+                // let bias_buf = ctx.buffers.get(&self.inputs[1]).ok_or_else(|| {
+                //     VolticError::Internal(format!("buffer not found: {:?}", self.inputs[1]))
+                // })?;
                 let grad_out_buf = ctx
                     .training_buffers
                     .get(&(self.output, buffer_kind::GRAD))

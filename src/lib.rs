@@ -31,13 +31,15 @@ pub mod buffer_kind {
     pub const PARTIAL: &str = "partial";
     pub const PARTIAL_SUM: &str = "partial_sum";
     pub const X_NORM: &str = "x_norm";
+    pub const LHS_STAGE: &str = "lhs_stage";
+    pub const RHS_STAGE: &str = "rhs_stage";
 }
 
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
 
-    use crate::{Adam, Context, Linear, Sgd, Var};
+    use crate::{Adam, Context, Gpt, GptConfig, Linear, Sgd, Var};
 
     static TEST_LOCK: Mutex<()> = Mutex::new(());
 
@@ -57,7 +59,6 @@ mod tests {
             .unwrap();
         weights.load(vec![vec![1., 1.]]).unwrap();
 
-        println!("Shapes: {:?}", Context::shapes());
         assert_eq!(Context::shape_total(y.id()), Some(4));
         // assert_eq!(Context::shapes_count(), 3);
         // assert_eq!(Context::get().operations().len(), 1);
@@ -113,7 +114,7 @@ mod tests {
 
         let y_pred = Var::with_shape(vec![4, 1]);
         let y_true = Var::with_shape(vec![4, 1]);
-        let loss = y_pred.mse(y_true).unwrap();
+        let _loss = y_pred.mse(y_true).unwrap();
 
         Context::allocate_buffers().unwrap();
 
@@ -141,7 +142,7 @@ mod tests {
         let weights = Var::with_shape(vec![2, 1]);
 
         let y_pred = x.mat_mul(weights).unwrap();
-        let loss = y_pred.mse(y_true).unwrap();
+        let _loss = y_pred.mse(y_true).unwrap();
 
         Context::init_gpu().unwrap();
         Context::allocate_buffers().unwrap();
@@ -369,5 +370,154 @@ mod tests {
         assert_eq!(y[5], 0.25);
         assert_eq!(y[6], 0.25);
         assert_eq!(y[7], 0.25);
+    }
+
+    #[test]
+    fn gpt_forward_16tokens() {
+        let _lock = TEST_LOCK.lock().unwrap();
+        Context::init_gpu().unwrap();
+
+        let config = GptConfig {
+            vocab_size: 16,
+            seq_len: 16,
+            d_model: 32,
+            num_heads: 2,
+            num_layers: 1,
+            ff_dim: None,
+        };
+
+        let mut gpt = Gpt::new(config).unwrap();
+
+        let tokens = Var::with_shape(vec![1, 16]);
+        let y_true = Var::with_shape(vec![1, 16, 16]); // one-hot targets
+
+        let output = gpt.forward(&tokens).unwrap();
+        let loss = output.mse(y_true).unwrap();
+
+        Context::allocate_buffers().unwrap();
+        gpt.init().unwrap();
+
+        // Load tokens 0..15
+        tokens
+            .load(vec![(0..16u32).map(|i| i as f32).collect()])
+            .unwrap();
+
+        // Load one-hot targets — target at pos i is token (i+1) % 16
+        let mut y_data = vec![0.0f32; 16 * 16];
+        for i in 0..16usize {
+            y_data[i * 16 + (i + 1) % 16] = 1.0;
+        }
+        y_true.load(vec![y_data]).unwrap();
+
+        Context::prepare().unwrap();
+        let mut adam = Adam::new(0.001); // 0.1 is very high — might diverge
+        adam.init().unwrap();
+
+        for epoch in 0..1_000 {
+            Context::run().unwrap();
+            Context::backward().unwrap();
+            adam.step().unwrap();
+            if epoch % 100 == 0 {
+                let loss_val = loss.to_cpu().unwrap();
+                let mse = loss_val.iter().sum::<f32>() / loss_val.len() as f32;
+                println!("epoch {epoch:5} — loss: {mse:.6}");
+            }
+        }
+
+        let result = output.to_cpu().unwrap();
+        for i in 0..(result.len() / 16) {
+            let i = i * 16;
+            let mut best_j = 0;
+            for j in 1..16 {
+                if result[i + j] > result[i + best_j] {
+                    best_j = j;
+                }
+            }
+            print!("{} ", best_j);
+        }
+        println!("predictions");
+        println!("gpt_forward_16tokens passed!");
+    }
+
+    #[test]
+    fn gpt_forward_16tokens_batched() {
+        let _lock = TEST_LOCK.lock().unwrap();
+        Context::init_gpu().unwrap();
+
+        let config = GptConfig {
+            vocab_size: 16,
+            seq_len: 16,
+            d_model: 32,
+            num_heads: 2,
+            num_layers: 1,
+            ff_dim: None,
+        };
+
+        let mut gpt = Gpt::new(config).unwrap();
+
+        let batch = 16;
+
+        let tokens = Var::with_shape(vec![batch, 16]);
+        let y_true = Var::with_shape(vec![batch, 16, 16]); // one-hot targets
+
+        let output = gpt.forward(&tokens).unwrap();
+        let loss = output.mse(y_true).unwrap();
+
+        Context::allocate_buffers().unwrap();
+        gpt.init().unwrap();
+
+        // Load tokens 0..15
+        tokens
+            .load(
+                (0..16u32)
+                    .map(|b| (0..16u32).map(|i| ((i + b) % 16) as f32).collect())
+                    .collect(),
+            )
+            .unwrap();
+
+        // Load one-hot targets — target at pos i is token (i+1) % 16
+        let mut y_data = vec![0.0f32; 16 * 16 * 16];
+        for b in 0..(batch as usize) {
+            for i in 0..16usize {
+                y_data[b * 16 * 16 + i * 16 + (i + 1 + b) % 16] = 1.0;
+            }
+        }
+        y_true.load(vec![y_data]).unwrap();
+
+        Context::prepare().unwrap();
+        let mut adam = Adam::new(0.01); // 0.1 is very high — might diverge
+        adam.init().unwrap();
+
+        for epoch in 0..1_000 {
+            Context::run().unwrap();
+            Context::backward().unwrap();
+            adam.step().unwrap();
+            if epoch % 100 == 0 {
+                let loss_val = loss.to_cpu().unwrap();
+                let mse = loss_val.iter().sum::<f32>() / loss_val.len() as f32;
+                println!("epoch {epoch:5} — loss: {mse:.6}");
+            }
+        }
+
+        let result = output.to_cpu().unwrap();
+        println!("Result Len: {}", result.len());
+        for oi in 0..(result.len() / 16) {
+            let i = oi * 16;
+            let mut best_j = 0;
+            for j in 1..16 {
+                if result[i + j] > result[i + best_j] {
+                    best_j = j;
+                }
+            }
+            print!("{} ", best_j);
+            if result[i + best_j] < 0.5 {
+                print!("{:.3}; ", result[i + best_j]);
+            }
+
+            if oi % 16 == 15 {
+                println!("predictions");
+            }
+        }
+        println!("gpt_forward_16tokens passed!");
     }
 }

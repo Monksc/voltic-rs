@@ -10,10 +10,12 @@ const BACKWARD_SHADER: &str = include_str!("shaders/permute_backward.wgsl");
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct PermuteDims {
     rank: u32,
-    shape: [u32; 8],
-    perm: [u32; 8],
-    out_shape: [u32; 8],
     total: u32,
+    _pad0: u32,
+    _pad1: u32,
+    shape: [[u32; 4]; 2],
+    perm: [[u32; 4]; 2],
+    out_shape: [[u32; 4]; 2],
 }
 
 #[derive(Debug)]
@@ -42,22 +44,24 @@ impl PermuteOp {
 
     fn make_dims(&self) -> PermuteDims {
         let rank = self.shape.len();
-        let mut shape = [0u32; 8];
-        let mut perm = [0u32; 8];
-        let mut out_shape = [0u32; 8];
+        let mut shape = [[0u32; 4]; 2];
+        let mut perm = [[0u32; 4]; 2];
+        let mut out_shape = [[0u32; 4]; 2];
 
-        for i in 0..rank {
-            shape[i] = self.shape[i];
-            perm[i] = self.perm[i] as u32;
-            out_shape[i] = self.out_shape[i];
+        for i in 0..rank.min(8) {
+            shape[i / 4][i % 4] = self.shape[i];
+            perm[i / 4][i % 4] = self.perm[i] as u32;
+            out_shape[i / 4][i % 4] = self.out_shape[i];
         }
 
         PermuteDims {
             rank: rank as u32,
+            total: self.total,
+            _pad0: 0,
+            _pad1: 0,
             shape,
             perm,
             out_shape,
-            total: self.total,
         }
     }
 }

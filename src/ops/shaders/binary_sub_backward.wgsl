@@ -1,0 +1,25 @@
+// sub backward: d/d_lhs = 1, d/d_rhs = -1
+
+struct Dims {
+    rank:        u32,
+    total:       u32,
+    _pad0:       u32,
+    _pad1:       u32,
+    out_shape:   array<vec4<u32>, 2>,
+    lhs_strides: array<vec4<u32>, 2>,
+    rhs_strides: array<vec4<u32>, 2>,
+}
+
+@group(0) @binding(0) var<storage, read>       grad_out:         array<f32>;
+@group(0) @binding(1) var<storage, read_write> grad_lhs_staging: array<f32>;
+@group(0) @binding(2) var<storage, read_write> grad_rhs_staging: array<f32>;
+@group(0) @binding(3) var<uniform>             dims:             Dims;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = gid.x;
+    if i >= dims.total { return; }
+
+    grad_lhs_staging[i] =  grad_out[i];
+    grad_rhs_staging[i] = -grad_out[i];
+}

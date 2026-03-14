@@ -166,7 +166,7 @@ impl Adam {
         self.t += 1;
 
         let mut ctx = Context::get_mut();
-        let mut gpu = ctx
+        let gpu = ctx
             .gpu_context_mut()
             .as_mut()
             .ok_or(VolticError::GpuNotAvailable)?;

@@ -5,7 +5,7 @@ use std::{
 
 use wgpu::util::DeviceExt;
 
-use crate::{BufferKey, GpuContext, ID, Op, Result, VolticError, buffer_kind};
+use crate::{BufferKey, GpuContext, ID, Op, Result, VolticError};
 
 #[derive(Debug)]
 pub struct Context {

@@ -20,7 +20,7 @@ pub trait Op: std::fmt::Debug + Send + Sync {
     fn create_pipelines(&self, device: &wgpu::Device)
     -> Vec<(&'static str, wgpu::ComputePipeline)>;
 
-    fn buffers_needed(&self, shapes: &HashMap<ID, Vec<u32>>) -> Vec<(ID, &'static str, u32)> {
+    fn buffers_needed(&self, _shapes: &HashMap<ID, Vec<u32>>) -> Vec<(ID, &'static str, u32)> {
         vec![]
     }
 
@@ -28,7 +28,7 @@ pub trait Op: std::fmt::Debug + Send + Sync {
     fn forward_gpu(&self, ctx: &mut GpuContext) -> Result<()>;
 
     // Gradients
-    fn backward(&self, ctx: &mut GpuContext) -> Result<()> {
+    fn backward(&self, _ctx: &mut GpuContext) -> Result<()> {
         Ok(())
     }
 }

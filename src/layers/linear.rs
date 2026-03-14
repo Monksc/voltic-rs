@@ -24,7 +24,7 @@ impl Linear {
 
     pub fn forward(&mut self, x: &Var) -> Result<Var> {
         let x_shape = Context::shape(x.id()).ok_or(VolticError::EmptyShape)?;
-        let in_features = x_shape[1];
+        let in_features = x_shape[x_shape.len() - 1];
 
         if self.weights.is_none() {
             self.weights = Some(Var::with_shape(vec![in_features, self.out_features]));
@@ -35,7 +35,10 @@ impl Linear {
             if self.bias.is_none() {
                 self.bias = Some(Var::with_shape(vec![self.out_features]));
             }
-            out = out.bias_add_safe(self.bias.as_ref().unwrap().clone())?;
+            out = out.add_bc(
+                &self.bias.as_ref().unwrap().clone(),
+                &(0..out.shape().len() - 1).collect::<Vec<_>>(),
+            );
         }
 
         Ok(out)
