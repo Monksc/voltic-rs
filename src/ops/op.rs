@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{GpuContext, ID, Result};
+use crate::{GpuContext, Result, ID};
 
 pub trait Op: std::fmt::Debug + Send + Sync {
     // Optional — defaults to type name
@@ -18,7 +18,7 @@ pub trait Op: std::fmt::Debug + Send + Sync {
     // Pipeline registration — called once, cached forever
     fn pipeline_keys(&self) -> Vec<&'static str>;
     fn create_pipelines(&self, device: &wgpu::Device)
-    -> Vec<(&'static str, wgpu::ComputePipeline)>;
+        -> Vec<(&'static str, wgpu::ComputePipeline)>;
 
     fn buffers_needed(&self, _shapes: &HashMap<ID, Vec<u32>>) -> Vec<(ID, &'static str, u32)> {
         vec![]

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{GpuContext, ID, Op, Result};
+use crate::{GpuContext, Op, Result, ID};
 
 #[derive(Debug)]
 pub struct ConstantOp {

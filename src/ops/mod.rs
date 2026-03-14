@@ -39,3 +39,9 @@ pub use reshape::*;
 
 pub mod constant;
 pub use constant::*;
+
+pub mod im2col;
+pub use im2col::*;
+
+pub mod group_ops;
+pub use group_ops::*;

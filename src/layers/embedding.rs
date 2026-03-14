@@ -1,4 +1,4 @@
-use crate::{Context, EmbeddingOp, Result, Var, VolticError};
+use crate::{init, Context, EmbeddingOp, Result, Var, VolticError};
 
 pub struct Embedding {
     vocab_size: u32,
@@ -49,5 +49,13 @@ impl Embedding {
             Some(w) => vec![w],
             None => vec![],
         }
+    }
+
+    pub fn init(&self) -> Result<()> {
+        if let Some(w) = &self.weights {
+            let data = init::xavier_flat(self.vocab_size * self.d_model);
+            w.load(vec![data])?;
+        }
+        Ok(())
     }
 }

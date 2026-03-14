@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{GpuContext, ID, Result, VolticError, buffer_kind};
+use crate::{buffer_kind, GpuContext, Result, VolticError, ID};
 use wgpu::util::DeviceExt;
 
 const SHADER: &str = include_str!("shaders/mse.wgsl");

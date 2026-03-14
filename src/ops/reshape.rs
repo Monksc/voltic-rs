@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{GpuContext, ID, Result, VolticError, buffer_kind};
+use crate::{buffer_kind, GpuContext, Result, VolticError, ID};
 
 #[derive(Debug)]
 pub struct ReshapeOp {

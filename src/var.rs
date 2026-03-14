@@ -1,8 +1,9 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::{
-    AddOp, ConstantOp, Context, DivOp, ExpOp, GeluOp, MatMulOp, MseOp, MulOp, PermuteOp, ReLUOp,
-    ReshapeOp, SigmoidOp, SoftmaxOp, SubOp, TanhOp, VolticError, buffer_kind, errors::Result,
+    buffer_kind, errors::Result, AddOp, ConstantOp, Context, DivOp, ExpOp, GeluOp, GroupMaxOp,
+    GroupMulOp, GroupSumOp, MatMulOp, MseOp, MulOp, PermuteOp, ReLUOp, ReshapeOp, SigmoidOp,
+    SoftmaxOp, SubOp, TanhOp, VolticError,
 };
 
 #[derive(Copy, Debug, Clone, PartialEq, Hash, Eq)]
@@ -77,6 +78,128 @@ impl Var {
 
     pub fn grad(&self) -> Result<Vec<f32>> {
         Context::read((self.0, buffer_kind::GRAD))
+    }
+
+    pub fn argmax(&self, axis: usize) -> Result<Vec<u32>> {
+        let shape = Context::shape(self.0).ok_or(VolticError::EmptyShape)?;
+        if axis >= shape.len() {
+            return Err(VolticError::InvalidDimension {
+                dim: axis,
+                ndim: shape.len(),
+            });
+        }
+
+        let data = self.to_cpu()?;
+        let outer: usize = shape[..axis].iter().map(|&x| x as usize).product();
+        let reduce: usize = shape[axis] as usize;
+        let inner: usize = shape[axis + 1..].iter().map(|&x| x as usize).product();
+
+        let mut result = vec![0u32; outer * inner];
+
+        for o in 0..outer {
+            for i in 0..inner {
+                let mut max_idx = 0;
+                let mut max_val = f32::NEG_INFINITY;
+
+                for r in 0..reduce {
+                    let idx = o * reduce * inner + r * inner + i;
+                    if data[idx] > max_val {
+                        max_val = data[idx];
+                        max_idx = r;
+                    }
+                }
+                result[o * inner + i] = max_idx as u32;
+            }
+        }
+
+        Ok(result)
+    }
+
+    pub fn sample_with_temperature(&self, axis: usize, temperature: f32) -> Result<Vec<u32>> {
+        if temperature <= 0.0 {
+            return self.argmax(axis);
+        }
+
+        let shape = Context::shape(self.0).ok_or(VolticError::EmptyShape)?;
+        if axis >= shape.len() {
+            return Err(VolticError::InvalidDimension {
+                dim: axis,
+                ndim: shape.len(),
+            });
+        }
+
+        let data = self.to_cpu()?;
+        let outer: usize = shape[..axis].iter().map(|&x| x as usize).product();
+        let reduce: usize = shape[axis] as usize;
+        let inner: usize = shape[axis + 1..].iter().map(|&x| x as usize).product();
+
+        let mut result = vec![0u32; outer * inner];
+
+        for o in 0..outer {
+            for i in 0..inner {
+                let mut logits = Vec::with_capacity(reduce);
+                for r in 0..reduce {
+                    let idx = o * reduce * inner + r * inner + i;
+                    logits.push(data[idx]);
+                }
+
+                let max_logit = logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+                let exp_logits: Vec<f32> = logits
+                    .iter()
+                    .map(|&x| ((x - max_logit) / temperature).exp())
+                    .collect();
+                let sum_exp: f32 = exp_logits.iter().sum();
+
+                if sum_exp == 0.0 || sum_exp.is_nan() {
+                    result[o * inner + i] = 0;
+                    continue;
+                }
+
+                let mut probs: Vec<f32> = exp_logits.iter().map(|&x| x / sum_exp).collect();
+
+                let r: f32 = rand::random();
+                let mut cumulative = 0.0;
+                let mut selected = 0;
+
+                for (j, &p) in probs.iter().enumerate() {
+                    cumulative += p;
+                    if r < cumulative {
+                        selected = j;
+                        break;
+                    }
+                }
+
+                result[o * inner + i] = selected as u32;
+            }
+        }
+
+        Ok(result)
+    }
+
+    pub fn cross_entropy(&self, y_true: Var) -> Result<f32> {
+        let pred_shape = Context::shape(self.0).ok_or(VolticError::EmptyShape)?;
+        let true_shape = Context::shape(y_true.0).ok_or(VolticError::EmptyShape)?;
+
+        if pred_shape != true_shape {
+            return Err(VolticError::IncompatibleShapes {
+                lhs: pred_shape.clone(),
+                rhs: true_shape,
+                op: "cross_entropy",
+            });
+        }
+
+        let pred = self.to_cpu()?;
+        let true_vals = y_true.to_cpu()?;
+
+        let mut loss = 0.0f32;
+        for (p, &t) in pred.iter().zip(true_vals.iter()) {
+            if t > 0.0 {
+                let log_prob = p.max(1e-10).ln();
+                loss -= t * log_prob;
+            }
+        }
+
+        Ok(loss)
     }
 
     pub fn id(&self) -> ID {
@@ -154,10 +277,10 @@ impl Var {
     }
 
     pub fn prev(&self) -> Self {
-        Self(ID(self.0.0 - 1))
+        Self(ID(self.0 .0 - 1))
     }
     pub fn next(&self) -> Self {
-        Self(ID(self.0.0 + 1))
+        Self(ID(self.0 .0 + 1))
     }
 
     pub fn permute(&self, perm: &[usize]) -> Result<Self> {
@@ -251,6 +374,7 @@ impl Var {
         }
 
         let batch: u32 = lhs_batch.iter().product::<u32>().max(1);
+        let rhs_batched: u32 = if rhs_rank > 2 { 1 } else { 0 };
 
         // Output shape: [...lhs_batch, M, N]
         let mut out_shape = lhs_batch.to_vec();
@@ -260,7 +384,14 @@ impl Var {
         let output = Self::new();
         Context::insert_shape(output.0, out_shape);
         Context::push_operation(Box::new(MatMulOp::new(
-            self.0, rhs.0, output.0, batch, m, k, n,
+            self.0,
+            rhs.0,
+            output.0,
+            batch,
+            m,
+            k,
+            n,
+            rhs_batched,
         )));
         Ok(output)
     }
@@ -282,6 +413,57 @@ impl Var {
         let output = Self::new();
         Context::insert_shape(output.0, new_shape.clone());
         Context::push_operation(Box::new(ReshapeOp::new(self.0, output.0, new_shape)));
+        Ok(output)
+    }
+
+    pub fn flatten(&self) -> Result<Self> {
+        let shape = Context::shape(self.0).ok_or(VolticError::EmptyShape)?;
+        let n: u32 = shape.iter().product();
+        self.reshape(vec![n])
+    }
+
+    fn validate_group_size(shape: &[u32], group_size: u32) -> Result<u32> {
+        let n: u32 = shape.iter().product();
+        if n % group_size != 0 {
+            return Err(VolticError::IncompatibleShapes {
+                lhs: shape.to_vec(),
+                rhs: vec![group_size],
+                op: "group operation: total elements must be divisible by group_size",
+            });
+        }
+        Ok(n)
+    }
+
+    pub fn group_mul(&self, group_size: u32) -> Result<Self> {
+        let shape = Context::shape(self.0).ok_or(VolticError::EmptyShape)?;
+        let n = Self::validate_group_size(&shape, group_size)?;
+
+        let num_groups = n / group_size;
+        let output = Var::new();
+        Context::insert_shape(output.0, vec![num_groups]);
+        Context::push_operation(Box::new(GroupMulOp::new(self.0, output.0, n, group_size)));
+        Ok(output)
+    }
+
+    pub fn group_add(&self, group_size: u32) -> Result<Self> {
+        let shape = Context::shape(self.0).ok_or(VolticError::EmptyShape)?;
+        let n = Self::validate_group_size(&shape, group_size)?;
+
+        let num_groups = n / group_size;
+        let output = Var::new();
+        Context::insert_shape(output.0, vec![num_groups]);
+        Context::push_operation(Box::new(GroupSumOp::new(self.0, output.0, n, group_size)));
+        Ok(output)
+    }
+
+    pub fn group_max(&self, group_size: u32) -> Result<Self> {
+        let shape = Context::shape(self.0).ok_or(VolticError::EmptyShape)?;
+        let n = Self::validate_group_size(&shape, group_size)?;
+
+        let num_groups = n / group_size;
+        let output = Var::new();
+        Context::insert_shape(output.0, vec![num_groups]);
+        Context::push_operation(Box::new(GroupMaxOp::new(self.0, output.0, n, group_size)));
         Ok(output)
     }
 }

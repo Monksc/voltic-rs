@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use wgpu::util::DeviceExt;
 
-use crate::{GpuContext, ID, Result, VolticError, buffer_kind};
+use crate::{buffer_kind, GpuContext, Result, VolticError, ID};
 
 const SHADER: &str = include_str!("shaders/matmul.wgsl");
 const BACKWARD_INPUT: &str = include_str!("shaders/matmul_backward_input.wgsl");

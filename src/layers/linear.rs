@@ -1,4 +1,4 @@
-use crate::{Context, Result, Var, VolticError};
+use crate::{init, Context, Result, Var, VolticError};
 
 pub struct Linear {
     out_features: u32,
@@ -53,5 +53,20 @@ impl Linear {
             params.push(b);
         }
         params
+    }
+
+    pub fn init(&self) -> Result<()> {
+        if let Some(w) = &self.weights {
+            let shape = Context::shape(w.id()).ok_or(VolticError::EmptyShape)?;
+            let fan_in = shape[0];
+            let data = init::xavier_flat(fan_in);
+            w.load(vec![data])?;
+        }
+        if let Some(b) = &self.bias {
+            let shape = Context::shape(b.id()).ok_or(VolticError::EmptyShape)?;
+            let n: u32 = shape.iter().product();
+            b.load(vec![vec![0.0; n as usize]])?;
+        }
+        Ok(())
     }
 }

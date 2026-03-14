@@ -1,4 +1,4 @@
-use crate::{GpuContext, ID, Result, VolticError, buffer_kind};
+use crate::{buffer_kind, GpuContext, Result, VolticError, ID};
 use std::collections::HashMap;
 use wgpu::util::DeviceExt;
 

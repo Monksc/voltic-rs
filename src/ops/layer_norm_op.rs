@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use wgpu::util::DeviceExt;
 
-use crate::{GpuContext, ID, Result, VolticError, buffer_kind};
+use crate::{buffer_kind, GpuContext, Result, VolticError, ID};
 
 const PASS1_SHADER: &str = include_str!("shaders/layer_norm_pass1.wgsl");
 const PASS2_SHADER: &str = include_str!("shaders/layer_norm_pass2.wgsl");

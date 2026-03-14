@@ -30,7 +30,7 @@ use std::collections::HashMap;
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 
-use crate::{BroadcastShape, GpuContext, ID, Result, VolticError, buffer_kind};
+use crate::{buffer_kind, BroadcastShape, GpuContext, Result, VolticError, ID};
 
 // ── GPU uniform struct ────────────────────────────────────────────────────────
 
