@@ -76,7 +76,10 @@ macro_rules! impl_activation {
                 shapes: &HashMap<ID, Vec<u32>>,
             ) -> Vec<(ID, &'static str, u32)> {
                 let n: u32 = shapes[&self.input].iter().product();
-                vec![(self.input, buffer_kind::GRAD, n)]
+                vec![
+                    (self.input, buffer_kind::GRAD, n),
+                    (self.output, buffer_kind::GRAD, n),
+                ]
             }
 
             fn forward_gpu(&self, ctx: &mut GpuContext) -> Result<()> {

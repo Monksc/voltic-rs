@@ -1,4 +1,4 @@
-use crate::{ID, Result, VARIABLES_ID_COUNTER, VolticError, buffer_kind, context::Context};
+use crate::{buffer_kind, context::Context, Result, VolticError, ID, VARIABLES_ID_COUNTER};
 use std::{borrow::Cow, collections::HashMap, sync::atomic::Ordering};
 use wgpu::util::DeviceExt;
 
@@ -26,6 +26,7 @@ pub struct Adam {
     pipeline: Option<wgpu::ComputePipeline>,
     momentum: HashMap<ID, wgpu::Buffer>,
     variance: HashMap<ID, wgpu::Buffer>,
+    dims_buffer: Option<wgpu::Buffer>,
 }
 
 impl Adam {
@@ -45,6 +46,7 @@ impl Adam {
             pipeline: None,
             momentum: Default::default(),
             variance: Default::default(),
+            dims_buffer: None,
         }
     }
     pub fn init(&mut self) -> Result<()> {
@@ -184,6 +186,30 @@ impl Adam {
                 .get(&(id, buffer_kind::GRAD))
                 .ok_or_else(|| VolticError::Internal(format!("no grad buffer: {:?}", id)))?;
 
+            // Create momentum and variance buffers on-demand if they don't exist
+            if !self.momentum.contains_key(&id) {
+                let buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some(&format!("adam_momentum:{:?}", id)),
+                    size: (n * 4) as u64,
+                    usage: wgpu::BufferUsages::STORAGE
+                        | wgpu::BufferUsages::COPY_SRC
+                        | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                });
+                self.momentum.insert(id, buf);
+            }
+            if !self.variance.contains_key(&id) {
+                let buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some(&format!("adam_variance:{:?}", id)),
+                    size: (n * 4) as u64,
+                    usage: wgpu::BufferUsages::STORAGE
+                        | wgpu::BufferUsages::COPY_SRC
+                        | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                });
+                self.variance.insert(id, buf);
+            }
+
             let momentum_buf = self
                 .momentum
                 .get(&id)
@@ -201,13 +227,22 @@ impl Adam {
                 t: self.t,
                 n,
             };
-            let dims_buf = gpu
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+
+            // Reuse or create dims buffer
+            if self.dims_buffer.is_none()
+                || self.dims_buffer.as_ref().map(|b| b.size()).unwrap_or(0)
+                    < std::mem::size_of::<AdamDims>() as u64
+            {
+                self.dims_buffer = Some(gpu.device.create_buffer(&wgpu::BufferDescriptor {
                     label: Some("adam_dims"),
-                    contents: bytemuck::bytes_of(&dims),
+                    size: std::mem::size_of::<AdamDims>() as u64,
                     usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                });
+                    mapped_at_creation: false,
+                }));
+            }
+            let dims_buf = self.dims_buffer.as_ref().unwrap();
+            gpu.queue
+                .write_buffer(dims_buf, 0, bytemuck::bytes_of(&dims));
 
             let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("adam_bind_group"),

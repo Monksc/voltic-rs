@@ -74,6 +74,15 @@ impl Context {
         Self::get_mut().operations.push(op)
     }
 
+    pub fn clear() {
+        let mut ctx = Self::get_mut();
+        // Only clear operations - keep shapes for model weights
+        ctx.operations.clear();
+        if let Some(gpu) = ctx.gpu_context_mut() {
+            gpu.clear_buffers();
+        }
+    }
+
     pub fn operations<'a>(&'a self) -> &'a Vec<Box<dyn Op>> {
         &self.operations
     }

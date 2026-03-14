@@ -64,7 +64,6 @@ impl GpuContext {
         for (id, shape) in shapes {
             if !self.buffers.contains_key(id) {
                 let n_elements: u32 = shape.iter().product();
-                //   let buffer = self.create_storage_buffer(&format!("buffer:{:?}", id), n_elements);
                 let data = init::xavier_flat(n_elements);
                 let buffer = self
                     .device
@@ -121,5 +120,9 @@ impl GpuContext {
         }
         self.flush();
         Ok(())
+    }
+
+    pub fn clear_buffers(&mut self) {
+        self.training_buffers.clear();
     }
 }

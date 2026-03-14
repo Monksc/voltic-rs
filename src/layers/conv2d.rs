@@ -53,6 +53,8 @@ impl Conv2d {
         let out_h = (height + 2 * self.padding - self.kernel_size) / self.stride + 1;
         let out_w = (width + 2 * self.padding - self.kernel_size) / self.stride + 1;
 
+        let needs_init = self.weights.is_none();
+
         if self.weights.is_none() {
             self.weights = Some(Var::with_shape(vec![
                 self.out_channels,
@@ -62,6 +64,21 @@ impl Conv2d {
 
         if self.bias.is_none() {
             self.bias = Some(Var::with_shape(vec![self.out_channels]));
+        }
+
+        // Initialize weights if this is the first forward pass
+        if needs_init {
+            if let Some(w) = &self.weights {
+                let shape = Context::shape(w.id()).ok_or(VolticError::EmptyShape)?;
+                let fan_in = shape[1];
+                let data = init::xavier_flat(fan_in);
+                w.load(vec![data])?;
+            }
+            if let Some(b) = &self.bias {
+                let shape = Context::shape(b.id()).ok_or(VolticError::EmptyShape)?;
+                let n: u32 = shape.iter().product();
+                b.load(vec![vec![0.0; n as usize]])?;
+            }
         }
 
         let col_h = batch * out_h * out_w;

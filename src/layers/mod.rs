@@ -22,6 +22,9 @@ pub use upsample::*;
 pub mod vae;
 pub use vae::*;
 
+pub mod autoencoder;
+pub use autoencoder::*;
+
 pub mod batch_norm;
 pub use batch_norm::*;
 
