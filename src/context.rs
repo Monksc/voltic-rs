@@ -74,21 +74,8 @@ impl Context {
         Self::get_mut().operations.push(op)
     }
 
-    /// Clear operations between epochs - keeps model weights
-    /// Use when reusing the same model Var IDs across epochs
     pub fn clear() {
         let mut ctx = Self::get_mut();
-        ctx.operations.clear();
-        if let Some(gpu) = ctx.gpu_context_mut() {
-            gpu.clear_buffers();
-        }
-    }
-
-    /// Reset everything - for starting completely fresh
-    /// WARNING: This clears all weights and buffers
-    pub fn reset() {
-        let mut ctx = Self::get_mut();
-        // Reset everything - for starting fresh training
         ctx.operations.clear();
         ctx.latest_shape.clear();
         if let Some(gpu) = ctx.gpu_context_mut() {

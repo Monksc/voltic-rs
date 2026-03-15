@@ -121,8 +121,4 @@ impl GpuContext {
         self.flush();
         Ok(())
     }
-
-    pub fn clear_buffers(&mut self) {
-        self.training_buffers.clear();
-    }
 }
