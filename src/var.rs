@@ -31,6 +31,10 @@ impl Var {
         Self(ID::next())
     }
 
+    pub fn from_id(id: ID) -> Self {
+        Self(id)
+    }
+
     pub fn with_shape(shape: Vec<u32>) -> Self {
         let id = ID::next();
         Context::insert_shape(id, shape);

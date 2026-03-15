@@ -943,4 +943,55 @@ mod tests {
         assert_eq!(shape, vec![1, 4, 4, 4]);
         println!("transposed_conv2d_test passed!");
     }
+
+    #[test]
+    fn save_restore_test() {
+        let _lock = TEST_LOCK.lock().unwrap();
+        Context::init_gpu().unwrap();
+
+        let x = Var::with_shape(vec![4, 2]);
+        let y_true = Var::with_shape(vec![4, 1]);
+
+        let h1 = Linear::new(8).forward(&x).unwrap().tanh().unwrap();
+        let y_pred = Linear::new(1).forward(&h1).unwrap();
+        let loss = y_pred.mse(y_true).unwrap();
+
+        Context::allocate_buffers().unwrap();
+
+        x.load(vec![
+            vec![0.0, 0.0],
+            vec![1.0, 0.0],
+            vec![0.0, 1.0],
+            vec![1.0, 1.0],
+        ]).unwrap();
+        y_true.load(vec![vec![0.0], vec![1.0], vec![1.0], vec![0.0]]).unwrap();
+
+        Context::prepare().unwrap();
+
+        let persistent = Context::get().collect_persistent(&[loss]);
+        println!("Collected {} persistent vars", persistent.len());
+
+        let path = "/tmp/voltioc_test_checkpoint.bin";
+        Context::get().save(path, &persistent).unwrap();
+
+        let weights_before: Vec<Vec<f32>> = persistent.iter().map(|v| v.to_cpu().unwrap()).collect();
+
+        let mut sgd = Sgd::new(0.1);
+        for _ in 0..50 {
+            Context::run().unwrap();
+            Context::backward().unwrap();
+            sgd.step().unwrap();
+        }
+
+        let weights_after: Vec<Vec<f32>> = persistent.iter().map(|v| v.to_cpu().unwrap()).collect();
+        assert_ne!(weights_before[0], weights_after[0]);
+
+        let mut persistent_restore = Context::get().collect_persistent(&[loss]);
+        Context::get_mut().restore(path, &mut persistent_restore).unwrap();
+
+        let weights_restored: Vec<Vec<f32>> = persistent_restore.iter().map(|v| v.to_cpu().unwrap()).collect();
+        assert_eq!(weights_before, weights_restored);
+
+        std::fs::remove_file(path).ok();
+    }
 }
