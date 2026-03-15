@@ -64,9 +64,16 @@ mod tests {
 
     static TEST_LOCK: Mutex<()> = Mutex::new(());
 
+    fn test_setup() -> std::sync::MutexGuard<'static, ()> {
+        let lock = TEST_LOCK.lock().unwrap();
+        Context::clear();
+        lock
+    }
+
     #[test]
     fn simple_matrix_multiply() {
-        let _lock = TEST_LOCK.lock().unwrap();
+        let _lock = test_setup();
+        Context::clear();
         let batch_size = 4;
         let x = Var::with_shape(vec![batch_size, 2]);
         let weights = Var::with_shape(vec![2, 1]);
@@ -105,7 +112,7 @@ mod tests {
 
     #[test]
     fn simple_mse() {
-        let _lock = TEST_LOCK.lock().unwrap();
+        let _lock = test_setup();
         Context::init_gpu().unwrap();
 
         let y_pred = Var::with_shape(vec![4, 1]);
@@ -130,7 +137,7 @@ mod tests {
 
     #[test]
     fn mse_backward() {
-        let _lock = TEST_LOCK.lock().unwrap();
+        let _lock = test_setup();
         Context::init_gpu().unwrap();
 
         let y_pred = Var::with_shape(vec![4, 1]);
@@ -156,7 +163,7 @@ mod tests {
 
     #[test]
     fn single_layer() {
-        let _lock = TEST_LOCK.lock().unwrap();
+        let _lock = test_setup();
         let batch_size = 4;
         let x = Var::with_shape(vec![batch_size, 2]);
         let y_true = Var::with_shape(vec![batch_size, 1]);
@@ -195,7 +202,7 @@ mod tests {
 
     #[test]
     fn xor_sgd() {
-        let _lock = TEST_LOCK.lock().unwrap();
+        let _lock = test_setup();
 
         Context::init_gpu().unwrap();
 
@@ -249,7 +256,7 @@ mod tests {
 
     #[test]
     fn xor_adam_tanh() {
-        let _lock = TEST_LOCK.lock().unwrap();
+        let _lock = test_setup();
 
         Context::init_gpu().unwrap();
 
@@ -304,7 +311,7 @@ mod tests {
 
     #[test]
     fn xor_adam_softmax() {
-        let _lock = TEST_LOCK.lock().unwrap();
+        let _lock = test_setup();
 
         Context::init_gpu().unwrap();
 
@@ -364,7 +371,7 @@ mod tests {
 
     #[test]
     fn softmax_simple_test() {
-        let _lock = TEST_LOCK.lock().unwrap();
+        let _lock = test_setup();
 
         Context::init_gpu().unwrap();
 
@@ -395,7 +402,7 @@ mod tests {
 
     #[test]
     fn gpt_forward_16tokens() {
-        let _lock = TEST_LOCK.lock().unwrap();
+        let _lock = test_setup();
         Context::init_gpu().unwrap();
 
         let config = GptConfig {
@@ -462,7 +469,7 @@ mod tests {
 
     #[test]
     fn gpt_forward_16tokens_batched() {
-        let _lock = TEST_LOCK.lock().unwrap();
+        let _lock = test_setup();
         Context::init_gpu().unwrap();
 
         let config = GptConfig {
@@ -544,7 +551,7 @@ mod tests {
 
     #[test]
     fn group_mul_test() {
-        let _lock = TEST_LOCK.lock().unwrap();
+        let _lock = test_setup();
         Context::init_gpu().unwrap();
 
         // Input: [1, 2, 3, 4, 5, 6]
@@ -569,7 +576,7 @@ mod tests {
 
     #[test]
     fn group_add_test() {
-        let _lock = TEST_LOCK.lock().unwrap();
+        let _lock = test_setup();
         Context::init_gpu().unwrap();
 
         // Input: [1, 0, 1, 1, 0, 0]
@@ -594,7 +601,7 @@ mod tests {
 
     #[test]
     fn group_max_test() {
-        let _lock = TEST_LOCK.lock().unwrap();
+        let _lock = test_setup();
         Context::init_gpu().unwrap();
 
         // Input: [1, 5, 3, 4, 2, 6]
@@ -619,7 +626,7 @@ mod tests {
 
     #[test]
     fn conv2d_forward_test() {
-        let _lock = TEST_LOCK.lock().unwrap();
+        let _lock = test_setup();
         Context::init_gpu().unwrap();
 
         // Input: [batch=1, channels=1, height=4, width=4]
@@ -637,7 +644,7 @@ mod tests {
 
     #[test]
     fn upsample_test() {
-        let _lock = TEST_LOCK.lock().unwrap();
+        let _lock = test_setup();
         Context::init_gpu().unwrap();
 
         // Input: [batch=1, channels=1, height=2, width=2]
@@ -654,7 +661,7 @@ mod tests {
 
     #[test]
     fn downsample_test() {
-        let _lock = TEST_LOCK.lock().unwrap();
+        let _lock = test_setup();
         Context::init_gpu().unwrap();
 
         // Input: [batch=1, channels=1, height=4, width=4]
@@ -744,7 +751,7 @@ mod tests {
 
     #[test]
     fn layer_norm_forward_test() {
-        let _lock = TEST_LOCK.lock().unwrap();
+        let _lock = test_setup();
         Context::init_gpu().unwrap();
 
         // Input: [batch=2, seq=4]
@@ -769,7 +776,7 @@ mod tests {
 
     #[test]
     fn vae_forward_test() {
-        let _lock = TEST_LOCK.lock().unwrap();
+        let _lock = test_setup();
         Context::init_gpu().unwrap();
 
         // Input: [batch=1, channels=1, height=32, width=32]
@@ -787,7 +794,7 @@ mod tests {
 
     #[test]
     fn moe_forward_test() {
-        let _lock = TEST_LOCK.lock().unwrap();
+        let _lock = test_setup();
         Context::init_gpu().unwrap();
 
         // Input: [batch=2, seq=4, hidden=8]
@@ -822,7 +829,7 @@ mod tests {
 
     #[test]
     fn neural_database_test() {
-        let _lock = TEST_LOCK.lock().unwrap();
+        let _lock = test_setup();
         Context::init_gpu().unwrap();
 
         let db = crate::NeuralDatabase::new(10, 8, 16).unwrap();
@@ -841,7 +848,7 @@ mod tests {
 
     #[test]
     fn learnable_memory_test() {
-        let _lock = TEST_LOCK.lock().unwrap();
+        let _lock = test_setup();
         Context::init_gpu().unwrap();
 
         let mem = crate::LearnableMemory::new(8, 32, 16);
@@ -860,7 +867,7 @@ mod tests {
 
     #[test]
     fn hybrid_mamba_transformer_test() {
-        let _lock = TEST_LOCK.lock().unwrap();
+        let _lock = test_setup();
         Context::init_gpu().unwrap();
 
         let mut hybrid = crate::HybridMambaTransformer::new(32, 4, 16).unwrap();
@@ -882,7 +889,7 @@ mod tests {
 
     #[test]
     fn downsample_actual_test() {
-        let _lock = TEST_LOCK.lock().unwrap();
+        let _lock = test_setup();
         Context::init_gpu().unwrap();
 
         // Input: [batch=1, channels=1, height=4, width=4]
@@ -903,7 +910,7 @@ mod tests {
 
     #[test]
     fn batch_norm_test() {
-        let _lock = TEST_LOCK.lock().unwrap();
+        let _lock = test_setup();
         Context::init_gpu().unwrap();
 
         // Input: [batch=2, channels=4, height=4, width=4]
@@ -925,7 +932,7 @@ mod tests {
 
     #[test]
     fn transposed_conv2d_test() {
-        let _lock = TEST_LOCK.lock().unwrap();
+        let _lock = test_setup();
         Context::init_gpu().unwrap();
 
         // Input: [batch=1, channels=4, height=4, width=4]
@@ -946,7 +953,7 @@ mod tests {
 
     #[test]
     fn save_restore_test() {
-        let _lock = TEST_LOCK.lock().unwrap();
+        let _lock = test_setup();
         Context::init_gpu().unwrap();
 
         let x = Var::with_shape(vec![4, 2]);
