@@ -45,10 +45,7 @@ impl Embedding {
     }
 
     pub fn parameters(&self) -> Vec<&Var> {
-        match &self.weights {
-            Some(w) => vec![w],
-            None => vec![],
-        }
+        parameters!(self, [weights])
     }
 
     pub fn init(&self) -> Result<()> {

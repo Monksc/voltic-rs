@@ -87,13 +87,6 @@ impl LayerNorm {
     }
 
     pub fn parameters(&self) -> Vec<&Var> {
-        let mut params = vec![];
-        if let Some(g) = &self.gamma {
-            params.push(g);
-        }
-        if let Some(b) = &self.beta {
-            params.push(b);
-        }
-        params
+        parameters!(self, [gamma, beta])
     }
 }

@@ -98,19 +98,6 @@ impl BatchNorm {
     }
 
     pub fn parameters(&self) -> Vec<&Var> {
-        let mut params = vec![];
-        if let Some(g) = &self.gamma {
-            params.push(g);
-        }
-        if let Some(b) = &self.beta {
-            params.push(b);
-        }
-        if let Some(m) = &self.running_mean {
-            params.push(m);
-        }
-        if let Some(v) = &self.running_var {
-            params.push(v);
-        }
-        params
+        parameters!(self, [gamma, beta, running_mean, running_var])
     }
 }

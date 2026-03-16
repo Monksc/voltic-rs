@@ -125,13 +125,6 @@ impl Conv2d {
     }
 
     pub fn parameters(&self) -> Vec<&Var> {
-        let mut params = vec![];
-        if let Some(w) = &self.weights {
-            params.push(w);
-        }
-        if let Some(b) = &self.bias {
-            params.push(b);
-        }
-        params
+        parameters!(self, [weights, bias])
     }
 }
