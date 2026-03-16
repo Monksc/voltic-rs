@@ -1233,6 +1233,54 @@ mod tests {
     }
 
     #[test]
+    fn simple_autoencoder_high_lr_test() {
+        use crate::SimpleAutoencoder;
+
+        let _lock = test_setup();
+        Context::init_gpu().unwrap();
+
+        // Try MUCH higher LR: 10.0 instead of 0.1
+        let mut autoencoder = SimpleAutoencoder::new(64, 3);
+        
+        let x = Var::with_shape(vec![2, 3, 64, 64]);
+        let output = autoencoder.forward(&x).unwrap();
+        let loss = output.mse(x.clone()).unwrap();
+
+        Context::allocate_buffers().unwrap();
+        autoencoder.init().unwrap();
+
+        let data: Vec<f32> = (0..2 * 3 * 64 * 64).map(|i| (i as f32 % 256.0) / 256.0).collect();
+        let batches: Vec<Vec<f32>> = data.chunks(3 * 64 * 64).map(|c| c.to_vec()).collect();
+        x.load(batches).unwrap();
+
+        Context::prepare().unwrap();
+        let mut sgd = Sgd::new(10.0); // 100x higher LR!
+
+        Context::run().unwrap();
+        let initial_loss = loss.to_cpu().unwrap();
+        let initial_mse: f32 = initial_loss.iter().sum::<f32>() / initial_loss.len() as f32;
+        println!("Initial loss (LR=10): {}", initial_mse);
+
+        for epoch in 0..100 {
+            Context::run().unwrap();
+            Context::backward().unwrap();
+            sgd.step().unwrap();
+            
+            if epoch % 20 == 0 {
+                let loss_val = loss.to_cpu().unwrap();
+                let mse: f32 = loss_val.iter().sum::<f32>() / loss_val.len() as f32;
+                println!("Epoch {} - Loss: {}", epoch, mse);
+            }
+        }
+
+        let final_loss = loss.to_cpu().unwrap();
+        let final_mse: f32 = final_loss.iter().sum::<f32>() / final_loss.len() as f32;
+        println!("Final loss (LR=10): {}", final_mse);
+
+        assert!(final_mse < 0.05, "Loss should go below 0.05 but got {}", final_mse);
+    }
+
+    #[test]
     fn layernorm_backward_test() {
         use crate::LayerNorm;
 
