@@ -1348,4 +1348,112 @@ mod tests {
 
         std::fs::remove_file(path).ok();
     }
+
+    #[test]
+    fn simple_autoencoder_lr_comparison_test() {
+        use crate::SimpleAutoencoder;
+
+        let _lock = test_setup();
+        Context::init_gpu().unwrap();
+
+        // Test with LR = 0.1
+        let mut autoencoder = SimpleAutoencoder::new(8, 3);
+        
+        let x = Var::with_shape(vec![2, 3, 8, 8]);
+        let output = autoencoder.forward(&x).unwrap();
+        let loss = output.mse(x.clone()).unwrap();
+
+        Context::allocate_buffers().unwrap();
+        autoencoder.init().unwrap();
+
+        let data: Vec<f32> = (0..384).map(|i| (i as f32 % 64.0) / 64.0).collect();
+        let batches: Vec<Vec<f32>> = data.chunks(192).map(|c| c.to_vec()).collect();
+        x.load(batches).unwrap();
+
+        Context::prepare().unwrap();
+        
+        // Check initial weights
+        let params = autoencoder.parameters();
+        println!("Number of params: {}", params.len());
+        
+        Context::run().unwrap();
+        
+        // Check gradients
+        for (i, p) in params.iter().enumerate() {
+            match Context::read((p.id(), "grad")) {
+                Ok(grad) => {
+                    let sum: f32 = grad.iter().sum::<f32>();
+                    let max: f32 = grad.iter().fold(0.0f32, |a, &b| a.max(b.abs()));
+                    println!("Param {}: grad_sum={:.8}, grad_max={:.8}", i, sum, max);
+                },
+                Err(e) => println!("Param {}: grad error: {:?}", i, e),
+            }
+        }
+        
+        let mut sgd = Sgd::new(0.1);
+
+        let initial_loss = loss.to_cpu().unwrap();
+        let initial_mse: f32 = initial_loss.iter().sum::<f32>() / initial_loss.len() as f32;
+        println!("Initial loss (LR=0.1): {}", initial_mse);
+
+        for epoch in 0..5 {
+            Context::run().unwrap();
+            Context::backward().unwrap();
+            sgd.step().unwrap();
+            
+            // Check gradients after backward
+            for (i, p) in params.iter().enumerate() {
+                match Context::read((p.id(), "grad")) {
+                    Ok(grad) => {
+                        let sum: f32 = grad.iter().sum::<f32>();
+                        let max: f32 = grad.iter().fold(0.0f32, |a, &b| a.max(b.abs()));
+                        println!("Epoch {} Param {}: grad_sum={:.8}, grad_max={:.8}", epoch, i, sum, max);
+                    },
+                    Err(e) => {},
+                }
+            }
+            
+            let loss_val = loss.to_cpu().unwrap();
+            let mse: f32 = loss_val.iter().sum::<f32>() / loss_val.len() as f32;
+            println!("Epoch {} - Loss: {}", epoch, mse);
+        }
+    }
+
+    #[test]
+    fn simple_linear_training_test() {
+        let _lock = test_setup();
+        Context::init_gpu().unwrap();
+
+        let mut linear = Linear::new(5);
+        
+        let x = Var::with_shape(vec![4, 5]);
+        let output = linear.forward(&x).unwrap();
+        let loss = output.mse(x.clone()).unwrap();
+
+        Context::allocate_buffers().unwrap();
+        linear.init().unwrap();
+
+        let data: Vec<f32> = (0..20).map(|i| i as f32).collect();
+        x.load(vec![data]).unwrap();
+
+        Context::prepare().unwrap();
+        let mut sgd = Sgd::new(0.1);
+
+        Context::run().unwrap();
+        let initial_loss = loss.to_cpu().unwrap();
+        let initial_mse: f32 = initial_loss.iter().sum::<f32>() / initial_loss.len() as f32;
+        println!("Initial loss: {}", initial_mse);
+
+        for epoch in 0..50 {
+            Context::run().unwrap();
+            Context::backward().unwrap();
+            sgd.step().unwrap();
+            
+            let loss_val = loss.to_cpu().unwrap();
+            let mse: f32 = loss_val.iter().sum::<f32>() / loss_val.len() as f32;
+            if epoch % 10 == 0 {
+                println!("Epoch {} - Loss: {}", epoch, mse);
+            }
+        }
+    }
 }
