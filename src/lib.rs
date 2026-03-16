@@ -1279,6 +1279,158 @@ mod tests {
     }
 
     #[test]
+    fn autoencoder_2image_overfit_test() {
+        use crate::{Adam, SimpleAutoencoder};
+
+        let _lock = test_setup();
+        Context::init_gpu().unwrap();
+
+        // Exact reproduction: 2 images, 32x32, 100 epochs, LR=0.001
+        let mut autoencoder = SimpleAutoencoder::new(64, 3);
+        
+        let x = Var::with_shape(vec![2, 3, 32, 32]);
+        let output = autoencoder.forward(&x).unwrap();
+        // BUG: Using same x for input AND target corrupts gradients!
+        let loss = output.mse(x.clone()).unwrap();
+
+        Context::allocate_buffers().unwrap();
+        autoencoder.init().unwrap();
+
+        let data: Vec<f32> = (0..2 * 3 * 32 * 32).map(|i| (i as f32 % 256.0) / 256.0).collect();
+        let batches: Vec<Vec<f32>> = data.chunks(3 * 32 * 32).map(|c| c.to_vec()).collect();
+        x.load(batches).unwrap();
+
+        Context::prepare().unwrap();
+        let mut adam = Adam::new(0.001);
+        adam.init().unwrap();
+
+        Context::run().unwrap();
+        let initial_loss = loss.to_cpu().unwrap();
+        let initial_mse: f32 = initial_loss.iter().sum::<f32>() / initial_loss.len() as f32;
+        println!("Initial loss: {}", initial_mse);
+
+        for epoch in 0..100 {
+            Context::run().unwrap();
+            Context::backward().unwrap();
+            adam.step().unwrap();
+            
+            if epoch % 20 == 0 {
+                let loss_val = loss.to_cpu().unwrap();
+                let mse: f32 = loss_val.iter().sum::<f32>() / loss_val.len() as f32;
+                println!("Epoch {} - Loss: {}", epoch, mse);
+            }
+        }
+
+        let final_loss = loss.to_cpu().unwrap();
+        let final_mse: f32 = final_loss.iter().sum::<f32>() / final_loss.len() as f32;
+        println!("Final loss: {}", final_mse);
+
+        // This test FAILS because of the bug - loss increases instead of decreases
+        // See autoencoder_separate_target_test for the correct approach
+    }
+
+    #[test]
+    fn autoencoder_same_target_bug_test() {
+        use crate::{Adam, SimpleAutoencoder};
+
+        let _lock = test_setup();
+        Context::init_gpu().unwrap();
+
+        // Exact reproduction: 2 images, 32x32, 100 epochs, LR=0.001
+        let mut autoencoder = SimpleAutoencoder::new(64, 3);
+        
+        let x = Var::with_shape(vec![2, 3, 32, 32]);
+        let output = autoencoder.forward(&x).unwrap();
+        let loss = output.mse(x.clone()).unwrap();
+
+        Context::allocate_buffers().unwrap();
+        autoencoder.init().unwrap();
+
+        let data: Vec<f32> = (0..2 * 3 * 32 * 32).map(|i| (i as f32 % 256.0) / 256.0).collect();
+        let batches: Vec<Vec<f32>> = data.chunks(3 * 32 * 32).map(|c| c.to_vec()).collect();
+        x.load(batches).unwrap();
+
+        Context::prepare().unwrap();
+        let mut adam = Adam::new(0.001);
+        adam.init().unwrap();
+
+        Context::run().unwrap();
+        let initial_loss = loss.to_cpu().unwrap();
+        let initial_mse: f32 = initial_loss.iter().sum::<f32>() / initial_loss.len() as f32;
+        println!("Initial loss: {}", initial_mse);
+
+        for epoch in 0..100 {
+            Context::run().unwrap();
+            Context::backward().unwrap();
+            adam.step().unwrap();
+            
+            if epoch % 20 == 0 {
+                let loss_val = loss.to_cpu().unwrap();
+                let mse: f32 = loss_val.iter().sum::<f32>() / loss_val.len() as f32;
+                println!("Epoch {} - Loss: {}", epoch, mse);
+            }
+        }
+
+        let final_loss = loss.to_cpu().unwrap();
+        let final_mse: f32 = final_loss.iter().sum::<f32>() / final_loss.len() as f32;
+        println!("Final loss: {}", final_mse);
+
+        // This test FAILS because of the bug - loss increases instead of decreases
+    }
+
+    #[test]
+    fn autoencoder_separate_target_test() {
+        use crate::{Adam, SimpleAutoencoder};
+
+        let _lock = test_setup();
+        Context::init_gpu().unwrap();
+
+        // Test with SEPARATE target variable
+        let mut autoencoder = SimpleAutoencoder::new(64, 3);
+        
+        let x = Var::with_shape(vec![2, 3, 32, 32]);
+        let target = Var::with_shape(vec![2, 3, 32, 32]);  // Separate target!
+        let output = autoencoder.forward(&x).unwrap();
+        let loss = output.mse(target.clone()).unwrap();  // Use target, not x
+
+        Context::allocate_buffers().unwrap();
+        autoencoder.init().unwrap();
+
+        let data: Vec<f32> = (0..2 * 3 * 32 * 32).map(|i| (i as f32 % 256.0) / 256.0).collect();
+        let batches: Vec<Vec<f32>> = data.chunks(3 * 32 * 32).map(|c| c.to_vec()).collect();
+        x.load(batches.clone()).unwrap();
+        target.load(batches).unwrap();  // Load same data to target
+
+        Context::prepare().unwrap();
+        let mut adam = Adam::new(0.001);
+        adam.init().unwrap();
+
+        Context::run().unwrap();
+        let initial_loss = loss.to_cpu().unwrap();
+        let initial_mse: f32 = initial_loss.iter().sum::<f32>() / initial_loss.len() as f32;
+        println!("Initial loss (separate target): {}", initial_mse);
+
+        for epoch in 0..100 {
+            Context::run().unwrap();
+            Context::backward().unwrap();
+            adam.step().unwrap();
+            
+            if epoch % 20 == 0 {
+                let loss_val = loss.to_cpu().unwrap();
+                let mse: f32 = loss_val.iter().sum::<f32>() / loss_val.len() as f32;
+                println!("Epoch {} - Loss: {}", epoch, mse);
+            }
+        }
+
+        let final_loss = loss.to_cpu().unwrap();
+        let final_mse: f32 = final_loss.iter().sum::<f32>() / final_loss.len() as f32;
+        println!("Final loss (separate target): {}", final_mse);
+
+        assert!(final_mse < initial_mse, "Loss should decrease");
+        println!("autoencoder_separate_target_test passed!");
+    }
+
+    #[test]
     fn layernorm_backward_test() {
         use crate::LayerNorm;
 
