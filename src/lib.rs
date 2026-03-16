@@ -1431,6 +1431,110 @@ mod tests {
     }
 
     #[test]
+    fn autoencoder_1000_epochs_test() {
+        use crate::{Adam, SimpleAutoencoder};
+
+        let _lock = test_setup();
+        Context::init_gpu().unwrap();
+
+        // Test with 1000 epochs - can we overfit?
+        let mut autoencoder = SimpleAutoencoder::new(64, 3);
+        
+        let x = Var::with_shape(vec![2, 3, 32, 32]);
+        let target = Var::with_shape(vec![2, 3, 32, 32]);
+        let output = autoencoder.forward(&x).unwrap();
+        let loss = output.mse(target.clone()).unwrap();
+
+        Context::allocate_buffers().unwrap();
+        autoencoder.init().unwrap();
+
+        let data: Vec<f32> = (0..2 * 3 * 32 * 32).map(|i| (i as f32 % 256.0) / 256.0).collect();
+        let batches: Vec<Vec<f32>> = data.chunks(3 * 32 * 32).map(|c| c.to_vec()).collect();
+        x.load(batches.clone()).unwrap();
+        target.load(batches).unwrap();
+
+        Context::prepare().unwrap();
+        let mut adam = Adam::new(0.001);
+        adam.init().unwrap();
+
+        Context::run().unwrap();
+        let initial_loss = loss.to_cpu().unwrap();
+        let initial_mse: f32 = initial_loss.iter().sum::<f32>() / initial_loss.len() as f32;
+        println!("Initial loss: {}", initial_mse);
+
+        for epoch in 0..1000 {
+            Context::run().unwrap();
+            Context::backward().unwrap();
+            adam.step().unwrap();
+            
+            if epoch % 100 == 0 {
+                let loss_val = loss.to_cpu().unwrap();
+                let mse: f32 = loss_val.iter().sum::<f32>() / loss_val.len() as f32;
+                println!("Epoch {} - Loss: {}", epoch, mse);
+            }
+        }
+
+        let final_loss = loss.to_cpu().unwrap();
+        let final_mse: f32 = final_loss.iter().sum::<f32>() / final_loss.len() as f32;
+        println!("Final loss: {}", final_mse);
+
+        assert!(final_mse < 0.01, "Autoencoder should overfit to < 0.01 with 1000 epochs, but got {}", final_mse);
+        println!("autoencoder_1000_epochs_test passed!");
+    }
+
+    #[test]
+    fn simple_2conv_1000_epochs_test() {
+        use crate::{Conv2d, Adam};
+
+        let _lock = test_setup();
+        Context::init_gpu().unwrap();
+
+        // Test with just 2 Conv2d layers (like classifier)
+        let mut conv1 = Conv2d::new(32, 3).stride(1).padding(1);
+        let mut conv2 = Conv2d::new(3, 3).stride(1).padding(1);  // output 3 channels
+        
+        let x = Var::with_shape(vec![2, 3, 32, 32]);
+        let target = Var::with_shape(vec![2, 3, 32, 32]);
+        let x1 = conv1.forward(&x).unwrap().gelu().unwrap();
+        let x2 = conv2.forward(&x1).unwrap();
+        let loss = x2.mse(target.clone()).unwrap();
+
+        Context::allocate_buffers().unwrap();
+        conv1.init().unwrap();
+        conv2.init().unwrap();
+
+        let data: Vec<f32> = (0..2 * 3 * 32 * 32).map(|i| (i as f32 % 256.0) / 256.0).collect();
+        let batches: Vec<Vec<f32>> = data.chunks(3 * 32 * 32).map(|c| c.to_vec()).collect();
+        x.load(batches.clone()).unwrap();
+        target.load(batches).unwrap();
+
+        Context::prepare().unwrap();
+        let mut adam = Adam::new(0.001);
+        adam.init().unwrap();
+
+        Context::run().unwrap();
+        let initial_loss = loss.to_cpu().unwrap();
+        let initial_mse: f32 = initial_loss.iter().sum::<f32>() / initial_loss.len() as f32;
+        println!("Initial loss (2 conv): {}", initial_mse);
+
+        for epoch in 0..1000 {
+            Context::run().unwrap();
+            Context::backward().unwrap();
+            adam.step().unwrap();
+            
+            if epoch % 100 == 0 {
+                let loss_val = loss.to_cpu().unwrap();
+                let mse: f32 = loss_val.iter().sum::<f32>() / loss_val.len() as f32;
+                println!("Epoch {} - Loss: {}", epoch, mse);
+            }
+        }
+
+        let final_loss = loss.to_cpu().unwrap();
+        let final_mse: f32 = final_loss.iter().sum::<f32>() / final_loss.len() as f32;
+        println!("Final loss (2 conv): {}", final_mse);
+    }
+
+    #[test]
     fn layernorm_backward_test() {
         use crate::LayerNorm;
 
