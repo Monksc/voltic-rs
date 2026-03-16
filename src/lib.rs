@@ -643,6 +643,56 @@ mod tests {
     }
 
     #[test]
+    fn conv2d_training_test() {
+        use crate::Conv2d;
+
+        let _lock = test_setup();
+        Context::init_gpu().unwrap();
+
+        // Simple conv: input 4x4, kernel 2x2, stride 1, padding 1 -> output 5x5
+        let x = Var::with_shape(vec![2, 1, 4, 4]);
+        
+        // Create conv and forward
+        let mut conv = Conv2d::new(1, 2).stride(1).padding(1);
+        let output = conv.forward(&x).unwrap();
+
+        // Create target for loss
+        let y_true = Var::with_shape(vec![2, 1, 5, 5]);
+        
+        // Create loss
+        let loss = output.mse(y_true).unwrap();
+
+        Context::allocate_buffers().unwrap();
+        conv.init().unwrap();
+
+        // Load data
+        let input_data: Vec<f32> = (0..32).map(|i| (i % 8) as f32 / 8.0).collect();
+        let input_rows: Vec<Vec<f32>> = input_data.chunks(16).map(|c| c.to_vec()).collect();
+        x.load(input_rows).unwrap();
+        
+        // Target is zeros
+        y_true.load(vec![vec![0.0; 50]]).unwrap();
+
+        Context::prepare().unwrap();
+        
+        // Forward + backward
+        Context::run().unwrap();
+        Context::backward().unwrap();
+
+        // Check gradients
+        let params = conv.parameters();
+        println!("Conv2d parameters: {}", params.len());
+        for (i, p) in params.iter().enumerate() {
+            match Context::read((p.id(), "grad")) {
+                Ok(grad) => println!("  Param {}: grad sum={:?}", i, grad.iter().sum::<f32>()),
+                Err(e) => println!("  Param {}: grad error: {:?}", i, e),
+            }
+        }
+        
+        println!("conv2d_training_test passed!");
+    }
+
+    #[test]
     fn upsample_test() {
         let _lock = test_setup();
         Context::init_gpu().unwrap();
