@@ -66,7 +66,7 @@ impl Trie {
 
         for start in 0..chars.len() {
             let mut current = 0;
-            let mut valid = true;
+            let mut _valid = true;
 
             for i in start..chars.len() {
                 if let Some(&next) = self.nodes[current].children.get(&chars[i]) {
@@ -77,7 +77,7 @@ impl Trie {
                         substrings.push((substring, self.nodes[current].freq));
                     }
                 } else {
-                    valid = false;
+                    _valid = false;
                     break;
                 }
             }
@@ -92,8 +92,8 @@ pub struct TrieTokenTokenizer {
     vocab: HashMap<String, u32>,
     vocab_inv: HashMap<u32, String>,
     merges: Vec<(String, String)>,
-    trie: Trie,
-    min_freq: usize,
+    _trie: Trie,
+    _min_freq: usize,
 }
 
 impl TrieTokenTokenizer {
@@ -169,8 +169,8 @@ impl TrieTokenTokenizer {
             vocab,
             vocab_inv,
             merges,
-            trie,
-            min_freq: min_frequency,
+            _trie: trie,
+            _min_freq: min_frequency,
         }
     }
 

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use wgpu::util::DeviceExt;
 
-use crate::{buffer_kind, GpuContext, Result, VolticError, ID};
+use crate::{GpuContext, Result, VolticError, ID};
 
 macro_rules! impl_group_op {
     ($name:ident, $shader:expr, $key:literal) => {

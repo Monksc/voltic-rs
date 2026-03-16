@@ -1,4 +1,4 @@
-use crate::{Context, Embedding, Result, Var, VolticError};
+use crate::{Embedding, Result, Var};
 
 pub struct RagConfig {
     pub embedding_dim: u32,

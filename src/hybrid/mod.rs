@@ -1,8 +1,8 @@
 use crate::{Context, LayerNorm, Linear, Result, Var, VolticError};
 
 pub struct SsmLayer {
-    d_model: u32,
-    state_dim: u32,
+    _d_model: u32,
+    _state_dim: u32,
     x_proj: Linear,
     dt_proj: Linear,
     a_proj: Linear,
@@ -12,8 +12,8 @@ pub struct SsmLayer {
 impl SsmLayer {
     pub fn new(d_model: u32, state_dim: u32) -> Self {
         Self {
-            d_model,
-            state_dim,
+            _d_model: d_model,
+            _state_dim: state_dim,
             x_proj: Linear::new(state_dim),
             dt_proj: Linear::new(state_dim),
             a_proj: Linear::new(state_dim),
@@ -23,7 +23,7 @@ impl SsmLayer {
 
     pub fn forward_step(&mut self, x: &Var) -> Result<Var> {
         let x_proj_out = self.x_proj.forward(x)?;
-        let dt = self.dt_proj.forward(x)?;
+        let _dt = self.dt_proj.forward(x)?;
         let a = self.a_proj.forward(x)?;
 
         let a_sigmoid = a.sigmoid()?;
@@ -60,8 +60,8 @@ pub struct HybridMambaTransformer {
     ssm_norm: LayerNorm,
     ff_norm: LayerNorm,
     ff: Linear,
-    num_heads: u32,
-    d_model: u32,
+    _num_heads: u32,
+    _d_model: u32,
     causal_mask: Option<Var>,
 }
 
@@ -73,8 +73,8 @@ impl HybridMambaTransformer {
             ssm_norm: LayerNorm::new(d_model),
             ff_norm: LayerNorm::new(d_model),
             ff: Linear::new(d_model * 4),
-            num_heads,
-            d_model,
+            _num_heads: num_heads,
+            _d_model: d_model,
             causal_mask: None,
         })
     }

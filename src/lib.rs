@@ -660,7 +660,7 @@ mod tests {
         let y_true = Var::with_shape(vec![2, 1, 5, 5]);
         
         // Create loss
-        let loss = output.mse(y_true).unwrap();
+        let _loss = output.mse(y_true).unwrap();
 
         Context::allocate_buffers().unwrap();
         conv.init().unwrap();
@@ -781,8 +781,9 @@ mod tests {
     fn embedding_forward_test() {
         use crate::Embedding;
 
+        let _lock = test_setup();
+
         let mut embedding = Embedding::new(10, 4);
-        embedding.init().unwrap();
 
         // Input: [seq=3] token IDs (1D)
         let tokens = Var::with_shape(vec![3]);
@@ -790,6 +791,7 @@ mod tests {
         Context::init_gpu().unwrap();
         Context::allocate_buffers().unwrap();
         
+        embedding.init().unwrap();
         tokens.load(vec![vec![0.0, 1.0, 2.0]]).unwrap();
 
         let embedded = embedding.forward(&tokens).unwrap();
@@ -920,7 +922,7 @@ mod tests {
         let _lock = test_setup();
         Context::init_gpu().unwrap();
 
-        let mut hybrid = crate::HybridMambaTransformer::new(32, 4, 16).unwrap();
+        let hybrid = crate::HybridMambaTransformer::new(32, 4, 16).unwrap();
         hybrid.init().unwrap();
 
         // Input: [batch=2, seq=8, d_model=32]
@@ -972,7 +974,7 @@ mod tests {
         let reshaped: Vec<Vec<f32>> = data.chunks(64).map(|c| c.to_vec()).collect();
         x.load(reshaped).unwrap();
 
-        let mut bn = crate::BatchNorm::new(4);
+        let bn = crate::BatchNorm::new(4);
         bn.init().unwrap();
 
         let shape = Context::shape(x.id()).unwrap();
@@ -993,7 +995,7 @@ mod tests {
         let data: Vec<f32> = (0..64).map(|i| (i as f32) / 64.0).collect();
         x.load(vec![data]).unwrap();
 
-        let mut deconv = crate::TransposedConv2d::new(8, 3).stride(2).padding(1);
+        let deconv = crate::TransposedConv2d::new(8, 3).stride(2).padding(1);
         deconv.init().unwrap();
 
         let shape = Context::shape(x.id()).unwrap();

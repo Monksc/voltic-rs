@@ -1,12 +1,12 @@
-use crate::{Context, Conv2d, Linear, Result, Upsample, Var, VolticError};
+use crate::{Conv2d, Result, Var};
 
 pub struct SimpleAutoencoder {
     encoder_conv1: Conv2d,
     encoder_conv2: Conv2d,
     decoder_conv1: Conv2d,
     decoder_conv2: Conv2d,
-    latent_channels: u32,
-    image_channels: u32,
+    _latent_channels: u32,
+    _image_channels: u32,
 }
 
 impl SimpleAutoencoder {
@@ -16,8 +16,8 @@ impl SimpleAutoencoder {
             encoder_conv2: Conv2d::new(latent_channels, 3).stride(1).padding(1),
             decoder_conv1: Conv2d::new(32, 3).stride(1).padding(1),
             decoder_conv2: Conv2d::new(image_channels, 3).stride(1).padding(1),
-            latent_channels,
-            image_channels,
+            _latent_channels: latent_channels,
+            _image_channels: image_channels,
         }
     }
 

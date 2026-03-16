@@ -52,9 +52,9 @@ impl TransposedConv2d {
         let height = x_shape[2];
         let width = x_shape[3];
 
-        let out_height =
+        let _out_height =
             (height - 1) * self.stride - 2 * self.padding + self.kernel_size + self.output_padding;
-        let out_width =
+        let _out_width =
             (width - 1) * self.stride - 2 * self.padding + self.kernel_size + self.output_padding;
 
         if self.weights.is_none() {

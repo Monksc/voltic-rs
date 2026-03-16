@@ -159,7 +159,7 @@ impl Var {
                     continue;
                 }
 
-                let mut probs: Vec<f32> = exp_logits.iter().map(|&x| x / sum_exp).collect();
+                let probs: Vec<f32> = exp_logits.iter().map(|&x| x / sum_exp).collect();
 
                 let r: f32 = rand::random();
                 let mut cumulative = 0.0;

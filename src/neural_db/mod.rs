@@ -44,7 +44,7 @@ impl NeuralDatabase {
         self.value_memory.load(vec![full_value])
     }
 
-    pub fn forward(&mut self, query: &Var, top_k: usize) -> Result<Var> {
+    pub fn forward(&mut self, query: &Var, _top_k: usize) -> Result<Var> {
         let query_shape = Context::shape(query.id()).ok_or(VolticError::EmptyShape)?;
         let batch = query_shape.iter().product::<u32>() / self.key_dim;
 
@@ -110,7 +110,7 @@ pub struct LearnableMemory {
 }
 
 impl LearnableMemory {
-    pub fn new(num_slots: u32, memory_dim: u32, query_dim: u32) -> Self {
+    pub fn new(num_slots: u32, memory_dim: u32, _query_dim: u32) -> Self {
         Self {
             memory: Var::with_shape(vec![num_slots, memory_dim]),
             query_proj: Linear::new(memory_dim),
@@ -127,7 +127,7 @@ impl LearnableMemory {
 
         let query_aug = query.reshape(vec![batch, 1, self.memory_dim])?;
 
-        let memory_expanded = self
+        let _memory_expanded = self
             .memory
             .reshape(vec![1, self.num_slots, self.memory_dim])?;
 

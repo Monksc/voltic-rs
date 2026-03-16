@@ -2,8 +2,8 @@ use crate::{Context, Result, Var, VolticError};
 
 pub struct BatchNorm {
     num_features: u32,
-    momentum: f32,
-    epsilon: f32,
+    _momentum: f32,
+    _epsilon: f32,
     gamma: Option<Var>,
     beta: Option<Var>,
     running_mean: Option<Var>,
@@ -15,8 +15,8 @@ impl BatchNorm {
     pub fn new(num_features: u32) -> Self {
         Self {
             num_features,
-            momentum: 0.1,
-            epsilon: 1e-5,
+            _momentum: 0.1,
+            _epsilon: 1e-5,
             gamma: None,
             beta: None,
             running_mean: None,
@@ -61,14 +61,14 @@ impl BatchNorm {
             }
         }
 
-        let gamma = self.gamma.as_ref().unwrap();
-        let beta = self.beta.as_ref().unwrap();
+        let _gamma = self.gamma.as_ref().unwrap();
+        let _beta = self.beta.as_ref().unwrap();
 
-        let x_reshaped = x.reshape(vec![batch * height * width, channels])?;
+        let _x_reshaped = x.reshape(vec![batch * height * width, channels])?;
 
-        let mean = Var::with_shape(vec![channels]);
+        let _mean = Var::with_shape(vec![channels]);
 
-        let var = Var::with_shape(vec![channels]);
+        let _var = Var::with_shape(vec![channels]);
 
         let output = x.clone();
 

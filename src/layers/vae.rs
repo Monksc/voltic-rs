@@ -7,11 +7,11 @@ pub struct VaeEncoder {
     conv4: Conv2d,
     fc_mu: Linear,
     fc_log_var: Linear,
-    latent_dim: u32,
+    _latent_dim: u32,
 }
 
 impl VaeEncoder {
-    pub fn new(latent_dim: u32, image_channels: u32) -> Self {
+    pub fn new(latent_dim: u32, _image_channels: u32) -> Self {
         Self {
             conv1: Conv2d::new(32, 3).stride(2).padding(1),
             conv2: Conv2d::new(64, 3).stride(2).padding(1),
@@ -19,7 +19,7 @@ impl VaeEncoder {
             conv4: Conv2d::new(256, 3).stride(2).padding(1),
             fc_mu: Linear::new(latent_dim),
             fc_log_var: Linear::new(latent_dim),
-            latent_dim,
+            _latent_dim: latent_dim,
         }
     }
 
@@ -69,20 +69,20 @@ pub struct VaeDecoder {
     conv2: Conv2d,
     conv3: Conv2d,
     conv4: Conv2d,
-    image_channels: u32,
-    output_shape: Option<Vec<u32>>,
+    _image_channels: u32,
+    _output_shape: Option<Vec<u32>>,
 }
 
 impl VaeDecoder {
-    pub fn new(latent_dim: u32, image_channels: u32, output_shape: Vec<u32>) -> Self {
+    pub fn new(_latent_dim: u32, image_channels: u32, output_shape: Vec<u32>) -> Self {
         Self {
             fc: Linear::new(256 * 4 * 4),
             conv1: Conv2d::new(128, 3).padding(1),
             conv2: Conv2d::new(64, 3).padding(1),
             conv3: Conv2d::new(32, 3).padding(1),
             conv4: Conv2d::new(image_channels, 3).padding(1),
-            image_channels,
-            output_shape: Some(output_shape),
+            _image_channels: image_channels,
+            _output_shape: Some(output_shape),
         }
     }
 
@@ -179,29 +179,29 @@ impl Vae {
 }
 
 pub struct FlexibleVaeEncoder {
-    channels: Vec<u32>,
+    _channels: Vec<u32>,
     convs: Vec<Conv2d>,
     fc_mu: Linear,
     fc_log_var: Linear,
-    latent_dim: u32,
+    _latent_dim: u32,
 }
 
 impl FlexibleVaeEncoder {
     pub fn new(latent_dim: u32, image_channels: u32, channel_config: &[u32]) -> Self {
         let mut convs = Vec::new();
 
-        let mut in_ch = image_channels;
+        let mut _in_ch = image_channels;
         for &out_ch in channel_config {
             convs.push(Conv2d::new(out_ch, 3).stride(2).padding(1));
-            in_ch = out_ch;
+            _in_ch = out_ch;
         }
 
         Self {
-            channels: channel_config.to_vec(),
+            _channels: channel_config.to_vec(),
             convs,
             fc_mu: Linear::new(latent_dim),
             fc_log_var: Linear::new(latent_dim),
-            latent_dim,
+            _latent_dim: latent_dim,
         }
     }
 
@@ -248,14 +248,14 @@ pub struct FlexibleVaeDecoder {
     fc: Linear,
     convs: Vec<Conv2d>,
     upsample_layers: Vec<Upsample>,
-    image_channels: u32,
+    _image_channels: u32,
     init_channels: u32,
     init_size: u32,
 }
 
 impl FlexibleVaeDecoder {
     pub fn new(
-        latent_dim: u32,
+        _latent_dim: u32,
         image_channels: u32,
         channel_config: &[u32],
         init_channels: u32,
@@ -270,7 +270,7 @@ impl FlexibleVaeDecoder {
             upsample_layers.push(Upsample::new(2));
         }
 
-        for (i, &out_ch) in channel_config.iter().enumerate() {
+        for (_i, &out_ch) in channel_config.iter().enumerate() {
             convs.push(Conv2d::new(out_ch, 3).padding(1));
         }
         convs.push(Conv2d::new(image_channels, 3).padding(1));
@@ -279,7 +279,7 @@ impl FlexibleVaeDecoder {
             fc: Linear::new(fc_out),
             convs,
             upsample_layers,
-            image_channels,
+            _image_channels: image_channels,
             init_channels,
             init_size,
         }

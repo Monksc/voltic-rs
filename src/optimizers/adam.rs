@@ -1,6 +1,5 @@
 use crate::{buffer_kind, context::Context, Result, VolticError, ID, VARIABLES_ID_COUNTER};
 use std::{borrow::Cow, collections::HashMap, sync::atomic::Ordering};
-use wgpu::util::DeviceExt;
 
 const SHADER: &str = include_str!("../ops/shaders/adam.wgsl");
 

@@ -7,7 +7,7 @@ pub struct GroupedMatMul {
 
 impl GroupedMatMul {
     pub fn new(input_dim: u32, output_dim: u32, num_groups: u32) -> Result<Self> {
-        let dim_per_group = input_dim / num_groups;
+        let _dim_per_group = input_dim / num_groups;
         let output_per_group = output_dim / num_groups;
 
         let mut group_weights = Vec::with_capacity(num_groups as usize);

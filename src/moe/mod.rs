@@ -2,7 +2,7 @@ use crate::{Context, Linear, Result, Var, VolticError};
 
 pub struct MoELayer {
     num_experts: u32,
-    top_k: u32,
+    _top_k: u32,
     experts: Vec<Linear>,
     gate: Linear,
 }
@@ -16,7 +16,7 @@ impl MoELayer {
 
         Self {
             num_experts,
-            top_k,
+            _top_k: top_k,
             experts,
             gate: Linear::new(num_experts),
         }
@@ -30,7 +30,7 @@ impl MoELayer {
         let x_2d = x.reshape(vec![batch * seq_len, x_shape[x_shape.len() - 1]])?;
 
         let gating_scores = self.gate.forward(&x_2d)?;
-        let gating_probs = gating_scores.softmax(gating_scores.shape().len() - 1)?;
+        let _gating_probs = gating_scores.softmax(gating_scores.shape().len() - 1)?;
 
         let mut outputs = Vec::with_capacity(self.num_experts as usize);
         for expert in &mut self.experts {
@@ -38,7 +38,7 @@ impl MoELayer {
             outputs.push(expert_out);
         }
 
-        let mut final_output = Var::with_shape(vec![batch * seq_len, x_shape[x_shape.len() - 1]]);
+        let final_output = Var::with_shape(vec![batch * seq_len, x_shape[x_shape.len() - 1]]);
 
         Ok(final_output)
     }

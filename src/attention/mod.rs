@@ -1,8 +1,8 @@
 use crate::{Context, Linear, Result, Var, VolticError};
 
 pub struct MultiMatrixAttention {
-    num_matrices: u32,
-    d_model: u32,
+    _num_matrices: u32,
+    _d_model: u32,
     d_k: u32,
     q_proj: Linear,
     k_proj: Linear,
@@ -21,8 +21,8 @@ impl MultiMatrixAttention {
         }
 
         Ok(Self {
-            num_matrices,
-            d_model,
+            _num_matrices: num_matrices,
+            _d_model: d_model,
             d_k,
             q_proj: Linear::new(d_model),
             k_proj: Linear::new(d_model),
