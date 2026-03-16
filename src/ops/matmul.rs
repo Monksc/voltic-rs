@@ -102,29 +102,15 @@ impl super::Op for MatMulOp {
         &self,
         device: &wgpu::Device,
     ) -> Vec<(&'static str, wgpu::ComputePipeline)> {
-        let make = |label, src: &'static str| {
-            let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some(label),
-                source: wgpu::ShaderSource::Wgsl(src.into()),
-            });
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some(label),
-                layout: None,
-                module: &shader,
-                entry_point: Some("main"),
-                compilation_options: Default::default(),
-                cache: None,
-            })
-        };
         vec![
-            ("matmul", make("matmul", SHADER)),
+            ("matmul", make_pipeline!(device, "matmul", SHADER)),
             (
                 "matmul_backward_input",
-                make("matmul_backward_input", BACKWARD_INPUT),
+                make_pipeline!(device, "matmul_backward_input", BACKWARD_INPUT),
             ),
             (
                 "matmul_backward_weights",
-                make("matmul_backward_weights", BACKWARD_WEIGHTS),
+                make_pipeline!(device, "matmul_backward_weights", BACKWARD_WEIGHTS),
             ),
         ]
     }
@@ -161,13 +147,7 @@ impl super::Op for MatMulOp {
         })?;
 
         let dims = self.make_dims();
-        let dims_buf = ctx
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("matmul_dims"),
-                contents: bytemuck::bytes_of(&dims),
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            });
+        let dims_buf = create_dims_buffer!(ctx, "matmul_dims", dims);
 
         let bind_group = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("matmul_bind_group"),
