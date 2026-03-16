@@ -1182,6 +1182,57 @@ mod tests {
     }
 
     #[test]
+    fn simple_autoencoder_64x64_adam_test() {
+        use crate::SimpleAutoencoder;
+
+        let _lock = test_setup();
+        Context::init_gpu().unwrap();
+
+        // Match picaso-obama's exact setup:
+        // SimpleAutoencoder with latent_dim=64, image_channels=3
+        // Image size 64x64, 2 images
+        let mut autoencoder = SimpleAutoencoder::new(64, 3);
+        
+        // 2 images at 64x64 with 3 channels
+        let x = Var::with_shape(vec![2, 3, 64, 64]);
+        let output = autoencoder.forward(&x).unwrap();
+        let loss = output.mse(x.clone()).unwrap();
+
+        Context::allocate_buffers().unwrap();
+        autoencoder.init().unwrap();
+
+        // Random data
+        let data: Vec<f32> = (0..2 * 3 * 64 * 64).map(|i| (i as f32 % 256.0) / 256.0).collect();
+        let batches: Vec<Vec<f32>> = data.chunks(3 * 64 * 64).map(|c| c.to_vec()).collect();
+        x.load(batches).unwrap();
+
+        Context::prepare().unwrap();
+        let mut adam = Adam::new(0.001);
+
+        Context::run().unwrap();
+        let initial_loss = loss.to_cpu().unwrap();
+        let initial_mse: f32 = initial_loss.iter().sum::<f32>() / initial_loss.len() as f32;
+        println!("Initial loss: {}", initial_mse);
+
+        for epoch in 0..25 {
+            Context::run().unwrap();
+            Context::backward().unwrap();
+            adam.step().unwrap();
+            
+            let loss_val = loss.to_cpu().unwrap();
+            let mse: f32 = loss_val.iter().sum::<f32>() / loss_val.len() as f32;
+            println!("Epoch {} - Loss: {}", epoch, mse);
+        }
+
+        let final_loss = loss.to_cpu().unwrap();
+        let final_mse: f32 = final_loss.iter().sum::<f32>() / final_loss.len() as f32;
+        println!("Final loss: {}", final_mse);
+
+        assert!(final_mse < initial_mse, "Loss should decrease but went from {} to {}", initial_mse, final_mse);
+        println!("simple_autoencoder_64x64_adam_test passed!");
+    }
+
+    #[test]
     fn layernorm_backward_test() {
         use crate::LayerNorm;
 
