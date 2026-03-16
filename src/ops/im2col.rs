@@ -4,6 +4,7 @@ use wgpu::util::DeviceExt;
 use crate::{buffer_kind, GpuContext, Result, VolticError, ID};
 
 const SHADER: &str = include_str!("shaders/im2col.wgsl");
+const BACKWARD_SHADER: &str = include_str!("shaders/col2im.wgsl");
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -83,32 +84,47 @@ impl super::Op for Im2ColOp {
     }
 
     fn pipeline_keys(&self) -> Vec<&'static str> {
-        vec!["im2col"]
+        vec!["im2col", "col2im"]
     }
 
     fn create_pipelines(
         &self,
         device: &wgpu::Device,
     ) -> Vec<(&'static str, wgpu::ComputePipeline)> {
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        let fwd_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("im2col_shader"),
             source: wgpu::ShaderSource::Wgsl(SHADER.into()),
         });
 
-        let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        let fwd_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("im2col_pipeline"),
             layout: None,
-            module: &shader,
+            module: &fwd_shader,
             entry_point: Some("main"),
             compilation_options: Default::default(),
             cache: None,
         });
 
-        vec![("im2col", pipeline)]
+        let bwd_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("col2im_shader"),
+            source: wgpu::ShaderSource::Wgsl(BACKWARD_SHADER.into()),
+        });
+
+        let bwd_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("col2im_pipeline"),
+            layout: None,
+            module: &bwd_shader,
+            entry_point: Some("main"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+
+        vec![("im2col", fwd_pipeline), ("col2im", bwd_pipeline)]
     }
 
-    fn buffers_needed(&self, _shapes: &HashMap<ID, Vec<u32>>) -> Vec<(ID, &'static str, u32)> {
-        vec![]
+    fn buffers_needed(&self, shapes: &HashMap<ID, Vec<u32>>) -> Vec<(ID, &'static str, u32)> {
+        let input_n: u32 = shapes[&self.input].iter().product();
+        vec![(self.input, buffer_kind::GRAD, input_n)]
     }
 
     fn forward_gpu(&self, ctx: &mut GpuContext) -> Result<()> {
@@ -173,6 +189,76 @@ impl super::Op for Im2ColOp {
             .encoder
             .begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("im2col_pass"),
+                timestamp_writes: None,
+            });
+
+        pass.set_pipeline(pipeline);
+        pass.set_bind_group(0, &bind_group, &[]);
+        pass.dispatch_workgroups(workgroups_x, 1, 1);
+
+        Ok(())
+    }
+
+    fn backward(&self, ctx: &mut GpuContext) -> Result<()> {
+        let pipeline = ctx
+            .pipelines
+            .get("col2im")
+            .ok_or_else(|| VolticError::Internal("col2im pipeline not found".into()))?;
+
+        let grad_col_buf = ctx
+            .training_buffers
+            .get(&(self.output, buffer_kind::GRAD))
+            .ok_or_else(|| VolticError::Internal("im2col grad_col not found".into()))?;
+        let grad_input_buf = ctx
+            .training_buffers
+            .get(&(self.input, buffer_kind::GRAD))
+            .ok_or_else(|| VolticError::Internal("im2col grad_input not found".into()))?;
+
+        let dims = Im2ColDims {
+            batch: self.batch,
+            channels: self.channels,
+            height: self.height,
+            width: self.width,
+            kernel_size: self.kernel_size,
+            stride: self.stride,
+            padding: self.padding,
+            out_height: self.out_height,
+            out_width: self.out_width,
+        };
+        let dims_buf = ctx
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("col2im_dims"),
+                contents: bytemuck::bytes_of(&dims),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            });
+
+        let bind_group = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("col2im_bind_group"),
+            layout: &pipeline.get_bind_group_layout(0),
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: grad_col_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: grad_input_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: dims_buf.as_entire_binding(),
+                },
+            ],
+        });
+
+        let n_elements = self.batch * self.channels * self.height * self.width;
+        let workgroups_x = n_elements.div_ceil(256);
+
+        let mut pass = ctx
+            .encoder
+            .begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("col2im_pass"),
                 timestamp_writes: None,
             });
 
