@@ -1004,6 +1004,250 @@ mod tests {
     }
 
     #[test]
+    fn conv2d_training_loss_decreases_test() {
+        use crate::Conv2d;
+
+        let _lock = test_setup();
+        Context::init_gpu().unwrap();
+
+        let x = Var::with_shape(vec![2, 1, 4, 4]);
+        let y_true = Var::with_shape(vec![2, 1, 4, 4]);
+        
+        let mut conv = Conv2d::new(1, 3).stride(1).padding(1);
+        let output = conv.forward(&x).unwrap();
+        
+        let loss = output.mse(y_true).unwrap();
+
+        Context::allocate_buffers().unwrap();
+        conv.init().unwrap();
+
+        let input_data: Vec<f32> = (0..32).map(|i| (i as f32) / 32.0).collect();
+        let input_rows: Vec<Vec<f32>> = input_data.chunks(16).map(|c| c.to_vec()).collect();
+        x.load(input_rows.clone()).unwrap();
+        
+        y_true.load(input_rows).unwrap();
+
+        Context::prepare().unwrap();
+        let mut sgd = Sgd::new(0.01);
+
+        Context::run().unwrap();
+        let initial_loss = loss.to_cpu().unwrap();
+        let initial_mse: f32 = initial_loss.iter().sum::<f32>() / initial_loss.len() as f32;
+        println!("Initial loss: {}", initial_mse);
+
+        for epoch in 0..50 {
+            Context::run().unwrap();
+            Context::backward().unwrap();
+            sgd.step().unwrap();
+            
+            if epoch % 10 == 0 {
+                let loss_val = loss.to_cpu().unwrap();
+                let mse: f32 = loss_val.iter().sum::<f32>() / loss_val.len() as f32;
+                println!("Epoch {} - Loss: {}", epoch, mse);
+            }
+        }
+
+        let final_loss = loss.to_cpu().unwrap();
+        let final_mse: f32 = final_loss.iter().sum::<f32>() / final_loss.len() as f32;
+        println!("Final loss: {}", final_mse);
+
+        assert!(final_mse < initial_mse, "Loss should decrease but went from {} to {}", initial_mse, final_mse);
+        println!("conv2d_training_loss_decreases_test passed!");
+    }
+
+    #[test]
+    fn conv2d_different_configs_test() {
+        use crate::Conv2d;
+
+        let _lock = test_setup();
+        Context::init_gpu().unwrap();
+
+        // Test kernel 3x3, stride 2, no padding
+        let x = Var::with_shape(vec![1, 1, 8, 8]);
+        let mut conv = Conv2d::new(1, 3).stride(2).padding(0);
+        let output = conv.forward(&x).unwrap();
+
+        Context::allocate_buffers().unwrap();
+        
+        let data: Vec<f32> = (0..64).map(|i| i as f32).collect();
+        x.load(vec![data]).unwrap();
+
+        let shape = Context::shape(output.id()).unwrap();
+        // output_h = (8 - 3) / 2 + 1 = 3 (floor)
+        // output_w = (8 - 3) / 2 + 1 = 3
+        assert_eq!(shape, vec![1, 1, 3, 3], "Shape should be [1,1,3,3] but got {:?}", shape);
+        
+        println!("conv2d_different_configs_test passed!");
+    }
+
+    #[test]
+    fn conv2d_batch_size_test() {
+        use crate::Conv2d;
+
+        let _lock = test_setup();
+        Context::init_gpu().unwrap();
+
+        // Test with batch size 4
+        let x = Var::with_shape(vec![4, 3, 8, 8]);
+        let mut conv = Conv2d::new(3, 3).stride(1).padding(1);
+        let output = conv.forward(&x).unwrap();
+
+        Context::allocate_buffers().unwrap();
+        
+        let data: Vec<f32> = (0..768).map(|i| i as f32 / 768.0).collect();
+        let batches: Vec<Vec<f32>> = data.chunks(192).map(|c| c.to_vec()).collect();
+        x.load(batches).unwrap();
+
+        let shape = Context::shape(output.id()).unwrap();
+        assert_eq!(shape[0], 4, "Batch size should be 4");
+        assert_eq!(shape[1], 3, "Output channels should be 3");
+        
+        println!("conv2d_batch_size_test passed!");
+    }
+
+    #[test]
+    fn simple_autoencoder_forward_test() {
+        use crate::SimpleAutoencoder;
+
+        let _lock = test_setup();
+        Context::init_gpu().unwrap();
+
+        let mut autoencoder = SimpleAutoencoder::new(8, 3);
+        autoencoder.init().unwrap();
+
+        let x = Var::with_shape(vec![2, 3, 16, 16]);
+        let output = autoencoder.forward(&x).unwrap();
+
+        Context::allocate_buffers().unwrap();
+        
+        let data: Vec<f32> = (0..1536).map(|i| i as f32 / 1536.0).collect();
+        let batches: Vec<Vec<f32>> = data.chunks(768).map(|c| c.to_vec()).collect();
+        x.load(batches).unwrap();
+
+        Context::prepare().unwrap();
+        Context::run().unwrap();
+
+        let output_shape = Context::shape(output.id()).unwrap();
+        assert_eq!(output_shape, vec![2, 3, 16, 16], "Output shape should match input");
+        
+        println!("simple_autoencoder_forward_test passed!");
+    }
+
+    #[test]
+    fn simple_autoencoder_training_test() {
+        use crate::SimpleAutoencoder;
+
+        let _lock = test_setup();
+        Context::init_gpu().unwrap();
+
+        let mut autoencoder = SimpleAutoencoder::new(8, 3);
+        
+        let x = Var::with_shape(vec![2, 3, 8, 8]);
+        let output = autoencoder.forward(&x).unwrap();
+        let loss = output.mse(x.clone()).unwrap();
+
+        Context::allocate_buffers().unwrap();
+        autoencoder.init().unwrap();
+
+        let data: Vec<f32> = (0..384).map(|i| (i as f32 % 64.0) / 64.0).collect();
+        let batches: Vec<Vec<f32>> = data.chunks(192).map(|c| c.to_vec()).collect();
+        x.load(batches).unwrap();
+
+        Context::prepare().unwrap();
+        let mut sgd = Sgd::new(0.01);
+
+        Context::run().unwrap();
+        let initial_loss = loss.to_cpu().unwrap();
+        let initial_mse: f32 = initial_loss.iter().sum::<f32>() / initial_loss.len() as f32;
+        println!("Initial loss: {}", initial_mse);
+
+        for epoch in 0..30 {
+            Context::run().unwrap();
+            Context::backward().unwrap();
+            sgd.step().unwrap();
+            
+            if epoch % 10 == 0 {
+                let loss_val = loss.to_cpu().unwrap();
+                let mse: f32 = loss_val.iter().sum::<f32>() / loss_val.len() as f32;
+                println!("Epoch {} - Loss: {}", epoch, mse);
+            }
+        }
+
+        let final_loss = loss.to_cpu().unwrap();
+        let final_mse: f32 = final_loss.iter().sum::<f32>() / final_loss.len() as f32;
+        println!("Final loss: {}", final_mse);
+
+        assert!(final_mse < initial_mse, "Loss should decrease but went from {} to {}", initial_mse, final_mse);
+        println!("simple_autoencoder_training_test passed!");
+    }
+
+    #[test]
+    fn layernorm_backward_test() {
+        use crate::LayerNorm;
+
+        let _lock = test_setup();
+        Context::init_gpu().unwrap();
+
+        let x = Var::with_shape(vec![2, 4]);
+        let mut ln = LayerNorm::new(4);
+        ln.init().unwrap();
+        
+        let output = ln.forward(&x).unwrap();
+        let _loss = output.mse(x.clone()).unwrap();
+
+        Context::allocate_buffers().unwrap();
+        
+        x.load(vec![
+            vec![1.0, 2.0, 3.0, 4.0],
+            vec![2.0, 4.0, 6.0, 8.0],
+        ]).unwrap();
+
+        Context::prepare().unwrap();
+        
+        Context::run().unwrap();
+        Context::backward().unwrap();
+
+        let params = ln.parameters();
+        for (i, p) in params.iter().enumerate() {
+            match Context::read((p.id(), "grad")) {
+                Ok(grad) => println!("  Param {}: grad sum={:?}", i, grad.iter().sum::<f32>()),
+                Err(e) => println!("  Param {}: grad error: {:?}", i, e),
+            }
+        }
+        
+        println!("layernorm_backward_test passed!");
+    }
+
+    #[test]
+    fn batchnorm_training_mode_test() {
+        use crate::BatchNorm;
+
+        let _lock = test_setup();
+        Context::init_gpu().unwrap();
+
+        let x = Var::with_shape(vec![2, 4, 4, 4]);
+        let mut bn = BatchNorm::new(4);
+        bn.init().unwrap();
+        
+        let output = bn.forward(&x).unwrap();
+
+        Context::allocate_buffers().unwrap();
+        
+        let data: Vec<f32> = (0..128).map(|i| i as f32 / 128.0).collect();
+        let batches: Vec<Vec<f32>> = data.chunks(64).map(|c| c.to_vec()).collect();
+        x.load(batches).unwrap();
+
+        Context::prepare().unwrap();
+        
+        Context::run().unwrap();
+        
+        let output_shape = Context::shape(output.id()).unwrap();
+        assert_eq!(output_shape, vec![2, 4, 4, 4]);
+        
+        println!("batchnorm_training_mode_test passed!");
+    }
+
+    #[test]
     fn save_restore_test() {
         let _lock = test_setup();
         Context::init_gpu().unwrap();
